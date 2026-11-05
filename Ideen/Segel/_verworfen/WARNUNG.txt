@@ -1,0 +1,7 @@
+WARNUNG - NICHT VERWENDEN
+
+Diese Dateien stammen aus einem Testlauf mit Platzhalter-Geometrie
+(Dreiecksannahme: 6,34 m2 statt 7,78 m2 beim 420er-Grosssegel)
+und Platzhalter-Physik.
+
+Sie zeigen nur das Datenformat. Die Zahlen sind falsch.

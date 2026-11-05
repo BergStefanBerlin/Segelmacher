@@ -1,0 +1,60 @@
+{
+  "schema_version": "0.1",
+  "status": "bereit",
+  "eingabe": {
+    "segeldatei": "main.json",
+    "konventionen": "konventionen.json"
+  },
+  "berechnung": {
+    "produkte": ["profilpolaren", "gesamtsegel_lookup"],
+    "modell": "physikalisches_hybridmodell",
+    "profilverfahren": "duennprofil_fourier",
+    "gesamtsegelverfahren": "prandtl_spektral_crossflow",
+    "abgeloeste_stroemung": "mittelflaechen_impuls",
+    "modellstand": "H1",
+    "modellfestlegung": {
+      "status": "festgelegt"
+    },
+    "dreidimensionale_effekte": {
+      "induzierte_stroemung": "modellieren",
+      "induzierter_widerstand": "modellieren_ohne_doppelzaehlung",
+      "mast_und_segelinterferenz": "vernachlaessigt"
+    },
+    "parameter": {
+      "stall_start_deg": 12,
+      "stall_end_deg": 25,
+      "stall_re_shift_deg": 1,
+      "transition_re": 500000,
+      "transition_width": 0.2,
+      "viscous_cl2": 0.01,
+      "normal_pressure": 2,
+      "re_min": 1000,
+      "re_max": 100000000
+    },
+    "gueltigkeit": "ingenieurmodell_nicht_validiert"
+  },
+  "betriebspunkte": {
+    "anstellwinkel_deg": {"start": -180, "ende_exklusiv": 180, "schritt": 1},
+    "reynoldszahlen_referenz": [200000, 300000, 450000, 700000, 1050000, 1550000],
+    "windneigung_deg": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+  },
+  "formvarianten": {"modus": "unveraendert_aus_segeldatei"},
+  "numerik": {
+    "streifenintegration": "mittelpunktregel",
+    "hoehenraster": {
+      "schritt_m": 0.25,
+      "verfeinern_ab_eta": 0.75,
+      "verfeinerter_schritt_m": 0.125,
+      "kontur_und_profilstationen_einfuegen": true,
+      "nullsehnen_als_punkte_behandeln": true
+    }
+  },
+  "qualitaetspruefung": {
+    "rasterverfeinerungsfaktoren": [1, 2, 4],
+    "winkelrasterpruefung": {"zwischenpunkte_pro_intervall": 1},
+    "relative_toleranz": 0.01,
+    "absolute_toleranz_beiwerte": 0.0005
+  },
+  "ressourcen": {"max_prozessorzahl": 4, "gpu": "automatisch"},
+  "ausgabe": {"vorhandene_ergebnisse": "nicht_ueberschreiben"}
+}

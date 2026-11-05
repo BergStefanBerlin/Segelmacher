@@ -1,0 +1,103 @@
+{
+  "schema_version": "0.1",
+  "status": "rekonstruktion_keine_vermessungsbestaetigung",
+  "dateien": ["main.json", "fock.json"],
+  "konventionen": "aerodynamik_konventionen.json",
+  "quellen": [
+    {
+      "id": "420_regeln_2023",
+      "titel": "International 420 Class Rules, December 1st 2023",
+      "lokale_datei": "..\\Ideen\\Segel\\quellen\\420_Class_Rules_December_1st_2023.pdf_1902_en.pdf",
+      "url": "https://www.420sailing.org/uploaded_files/420%20Class%20Rules%20December%201st%202023.pdf_1902_en.pdf",
+      "pruefung": "Masswerte und Minimum-/Maximum-Spalten aus dem Original-PDF gelesen."
+    },
+    {
+      "id": "orc_vermessung",
+      "url": "https://orc.org/measurements/sails",
+      "verwendung": "Erlaeuterung der Breitenvermessung und der durch Falten bestimmten Achterliekspunkte. Kein Ersatz fuer eine vollstaendige ERS-Vermessung."
+    }
+  ],
+  "grosssegel": {
+    "quellenmasse": {
+      "quellenverweis": "420_regeln_2023",
+      "fundstellen": ["F.2.5, PDF-Seite 25", "F.3.5, PDF-Seite 26", "G.3.2.6 und G.3.3, PDF-Seite 31", "Diagramm 17, PDF-Seite 32"],
+      "vorliek_mastabstand_max_m": 4.9,
+      "baumaussenpunktabstand_max_m": 2.4,
+      "achterliekslaenge_max_m": 5.4,
+      "viertelbreite_max_m": 2.13,
+      "halbe_breite_max_m": 1.63,
+      "dreiviertelbreite_max_m": 0.995,
+      "obere_breite_max_m": 0.48,
+      "abstand_oberer_achterliekspunkt_vom_kopf_m": 0.6,
+      "kopfbreite_max_m": 0.115,
+      "unterliek_liektau_laenge_min_m": 1.92
+    },
+    "annahmen": [
+      "Gerades senkrechtes Vorliek; gerades waagerechtes Unterliek von gewaehlten 2.30 m. Kein gemessenes Ist-Mass.",
+      "Kopfhoehe H = sqrt(5.4^2 - 2.3^2). Die direkte Strecke vom vorderen Kopfpunkt zum Schothorn ist damit 5.40 m; nicht die Summe der Achterlieksegmente.",
+      "Breiten werden als senkrechte Abstaende zum geraden Vorliek in die ebene Kontur uebertragen.",
+      "Der halbe Achterliekspunkt ist gleich weit vom vorderen Kopfpunkt und Schothorn entfernt. Viertel- und Dreiviertelpunkte sind entsprechend gleich weit von ihren benachbarten Teilungspunkten entfernt.",
+      "Der obere Achterliekspunkt liegt bei x = -0.48 m und ist 0.60 m vom vorderen Kopfpunkt entfernt.",
+      "Der hintere Kopfpunkt liegt 0.115 m achterlich des vorderen Kopfpunktes auf gleicher Hoehe.",
+      "Randpunkte werden geradlinig verbunden. Lattenpositionen, Liekrundungen, Liektaue und reale Vermessungskorrekturen sind nicht nachgebildet."
+    ],
+    "erwartete_pruefwerte": {
+      "vorliekslaenge_m": 4.885693400,
+      "unterliekslaenge_m": 2.3,
+      "kopf_schothorn_abstand_m": 5.4,
+      "ebene_flaeche_m2": 7.668273440
+    }
+  },
+  "fock": {
+    "quellenmasse": {
+      "quellenverweis": "420_regeln_2023",
+      "fundstellen": ["G.4.1.1, PDF-Seite 32", "G.4.2, PDF-Seite 33"],
+      "vorliekslaenge_max_m": 3.5,
+      "achterliekslaenge_max_m": 3.2,
+      "unterliekslaenge_max_m": 1.75,
+      "unterlieksseitenhalbierende_max_m": 3.36,
+      "kopfbreite_max_m": 0.04
+    },
+    "annahmen": [
+      "Dreieck mit geraden Raendern und senkrechtem Vorliek. Die drei maximalen Seitenlaengen werden gemeinsam als gewaehlte Modellmasse angesetzt.",
+      "Hals = (0,0,0), Kopf = (0,0,3.5). Schothornhoehe z = (3.5^2 + 1.75^2 - 3.2^2)/(2*3.5), x = -sqrt(1.75^2-z^2).",
+      "Spitzer Kopf mit Breite 0 statt maximal erlaubten 0.04 m. Keine erfundene Kopfkontur.",
+      "Die Anstellung des Vorlieks am Vorstag gehoert zur spaeteren Montage im Gesamtmodell, nicht zur lokalen Segelform."
+    ],
+    "erwartete_pruefwerte": {
+      "vorliekslaenge_m": 3.5,
+      "achterliekslaenge_m": 3.2,
+      "unterliekslaenge_m": 1.75,
+      "unterlieksseitenhalbierende_m": 3.237186278,
+      "ebene_flaeche_m2": 2.787609233
+    }
+  },
+  "raeumliche_form": {
+    "status": "angenommen_nicht_gemessen",
+    "herkunft": "Beispielparameter aus aero_temp.json, keine aus den Klassenregeln abgeleitete Segelwoelbung.",
+    "beschreibung": "Drei Profilstationen bei eta 0/0.5/1: Grosssegel 0/10/8 Prozent Woelbung, Fock 10/10/8 Prozent. Bei beiden Woelbungsposition bei 40 Prozent der Sehne und Verwindung 0/-3/-6 Grad. Das Grosssegel-Unterliek bleibt als im geraden Baum gefuehrte Linie ungewoelbt und unverdreht.",
+    "grenzfall": "Bei der dreieckigen Fock verschwindet die Sehnenlaenge am Hals und am Kopf. Dort ist die Flaeche ein Punkt; y = 0 ohne Division durch die Sehnenlaenge.",
+    "schnittgrenzen": "Schnittenden ergeben sich aus dem gesamten Konturrand. Bei der Fock liegt das hintere Schnittende unterhalb des Schothorns auf dem Unterliek, darueber auf dem Achterliek."
+  },
+  "validierung": {
+    "ergebnis": "bestanden",
+    "pruefungen": [
+      "JSON-Syntax ohne doppelte Schluessel und identische Schema-Version mit den Konventionen.",
+      "Eindeutige Punkt-IDs, gueltige Verweise und geschlossene Konturraender.",
+      "Hals im Ursprung, endliche Koordinaten und ebene Ausgangskontur.",
+      "Abstaende, Flaechen und Teilungspunkte gegen die dokumentierte Herleitung, absolute Toleranz 1e-8.",
+      "Aufsteigende Profilstationen von eta 0 bis 1 und gueltige relative Woelbungsparameter.",
+      "Horizontale Schnitte bilden jeweils ein einzelnes Intervall.",
+      "Flaechenintegration mit 500 und 1000 Hoehenschnitten: relative Abweichung zur Polygonflaeche jeweils kleiner als 1e-5."
+    ],
+    "abgrenzung": "Geometrische und strukturelle Pruefung, keine aerodynamische Validierung oder Klassenvermessung."
+  },
+  "einschraenkungen": [
+    "Keine gemessenen realen Segel, keine Garantie der Klassenkonformitaet und keine Fertigungsvorlage.",
+    "Keine Simulation, keine aerodynamischen Beiwerte und keine Polaren.",
+    "Die Flaechen sind Ergebnisse der ebenen Modellkonturen, keine Sollflaechen und keine Flaechen der gewoelbten Membran.",
+    "Die bisherigen Flaechenwerte 7.78 und 2.79 m2 werden nicht als gepruefte Vorgaben uebernommen.",
+    "Die 1.920 m aus G.3.3 sind ein Mindestmass fuer das Unterliek-Liektau, keine maximale Unterliekslaenge.",
+    "aero_temp.json bleibt als separate Strukturvorlage unveraendert."
+  ]
+}

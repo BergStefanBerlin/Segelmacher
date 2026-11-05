@@ -1,0 +1,88 @@
+# =====================================================================
+# class_rules.yaml  -  MASSGEBLICHE Segelmass-Datei
+# ---------------------------------------------------------------------
+# REGEL: Jeder Wert null MUSS vom Menschen gefuellt werden.
+#        Das Programm bricht bei null mit MissingClassRuleError ab.
+#        NIEMALS Defaultwerte raten.
+#
+# Alle Laengen in Meter, alle Winkel in Grad.
+# Koordinaten: x voraus, y BACKBORD positiv, z oben. Ursprung Mastfuss.
+# =====================================================================
+
+meta:
+  schema_version: 1
+  sources:
+    int420:   "https://media.sailing.org/sailing/wp-content/uploads/2022/03/17092130/420_CR_2026-03-31.pdf"
+    club420:  "https://club420.org/"
+    optimist: "IODA Sail Plan, March 1994 (5 Blaetter)"
+    folkboat: "Nordic Folkboat International Class Rules"
+
+sails:
+
+  # ------------------------------------------------------------------
+  420_MAIN:
+    class: "International 420"          # TODO_HUMAN: Int. 420 ODER Club 420?
+    source_section: "Int. 420 Class Rules 2026, Section G.3 Mainsail, S. 29"
+    luff_m: null                        # TODO_HUMAN
+    foot_m: null                        # TODO_HUMAN
+    headboard_m: null                   # TODO_HUMAN
+    roach_m: null                       # TODO_HUMAN Achterlieksrundung
+    area_m2: null                       # TODO_HUMAN
+    tack_position_m: [0.0, 0.0, null]   # TODO_HUMAN Gooseneck-Hoehe ueber Deck
+    mast_diameter_m: null               # TODO_HUMAN
+    scale_factor_luff: 0.995            # Ist-Annahme: gefahren ~99.5 % des Maximums
+    scale_factor_foot: 0.970
+
+  # ------------------------------------------------------------------
+  420_JIB:
+    class: "International 420"
+    source_section: "Int. 420 Class Rules 2026, Section G.4 Headsail, S. 32"
+    luff_m: null
+    foot_m: null
+    area_m2: null
+    tack_position_m: [null, 0.0, null]  # TODO_HUMAN Vorstagfuss
+    mast_diameter_m: null
+    overlap_to_main: null               # TODO_HUMAN LP in Prozent
+    scale_factor_luff: 0.998
+    scale_factor_foot: 0.985
+
+  # ------------------------------------------------------------------
+  OPT_MAIN:
+    class: "International Optimist"
+    source_section: "IODA Sail Plan (March 1994), sheets 1/5-5/5"
+    luff_m: null
+    foot_m: null
+    leech_m: null
+    foot_median_m: null
+    area_m2: null
+    tack_position_m: [0.0, 0.0, null]
+    mast_diameter_m: null               # Spritrig: Mast IST das Vorliek
+    sprit_length_m: null
+    scale_factor_luff: 0.997
+    scale_factor_foot: 0.975
+
+  # ------------------------------------------------------------------
+  FOLK_MAIN:
+    class: "Nordic Folkboat"
+    source_section: "Nordic Folkboat Int. Class Rules, Section 9 + Measurement Diagram"
+    luff_m: null
+    foot_m: null
+    headboard_m: null                   # frueher gelesen: max 140 mm -> PRUEFEN
+    area_m2: null                       # Gesamtsegelflaeche frueher gelesen: 24.00 m2 -> PRUEFEN
+    tack_position_m: [0.0, 0.0, null]
+    mast_diameter_m: null               # Holz ODER Aluminium zulaessig -> beide Varianten
+    scale_factor_luff: 0.996
+    scale_factor_foot: 0.972
+
+  # ------------------------------------------------------------------
+  FOLK_JIB:
+    class: "Nordic Folkboat"
+    source_section: "Nordic Folkboat Int. Class Rules, Section 9"
+    luff_m: null
+    foot_m: null
+    area_m2: null
+    tack_position_m: [null, 0.0, null]
+    mast_diameter_m: null
+    overlap_to_main: null
+    scale_factor_luff: 0.999
+    scale_factor_foot: 0.988

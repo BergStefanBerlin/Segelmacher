@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.1",
+  "status": "rekonstruiertes_modell",
+  "segel": {
+    "id": "420_grosssegel",
+    "bootsklasse": "International 420",
+    "typ": "grosssegel"
+  },
+  "grundkontur": {
+    "punkte": [
+      { "id": "hals", "position_m": [0.0, 0.0, 0.0] },
+      { "id": "schothorn", "position_m": [-2.3, 0.0, 0.0] },
+      { "id": "achterliek_viertel", "position_m": [-2.13, 0.0, 1.375829205] },
+      { "id": "achterliek_halb", "position_m": [-1.63, 0.0, 2.668812578] },
+      { "id": "achterliek_dreiviertel", "position_m": [-0.995, 0.0, 3.909601105] },
+      { "id": "achterliek_oben", "position_m": [-0.48, 0.0, 4.525693400] },
+      { "id": "kopf_hinten", "position_m": [-0.115, 0.0, 4.885693400] },
+      { "id": "kopf_vorne", "position_m": [0.0, 0.0, 4.885693400] }
+    ],
+    "rand": {
+      "kanten": [
+        {
+          "name": "unterliek",
+          "punkt_ids": ["hals", "schothorn"]
+        },
+        {
+          "name": "achterliek",
+          "punkt_ids": ["schothorn", "achterliek_viertel", "achterliek_halb", "achterliek_dreiviertel", "achterliek_oben", "kopf_hinten"]
+        },
+        {
+          "name": "kopf",
+          "punkt_ids": ["kopf_hinten", "kopf_vorne"]
+        },
+        {
+          "name": "vorliek",
+          "punkt_ids": ["kopf_vorne", "hals"]
+        }
+      ]
+    }
+  },
+  "flaechenform": {
+    "profilschnitte": {
+      "stationen": [
+        {
+          "eta": 0.0,
+          "woelbungsverhaeltnis": 0.0,
+          "woelbungsposition_relativ": 0.4,
+          "verwindung_deg": 0.0
+        },
+        {
+          "eta": 0.5,
+          "woelbungsverhaeltnis": 0.1,
+          "woelbungsposition_relativ": 0.4,
+          "verwindung_deg": -3.0
+        },
+        {
+          "eta": 1.0,
+          "woelbungsverhaeltnis": 0.08,
+          "woelbungsposition_relativ": 0.4,
+          "verwindung_deg": -6.0
+        }
+      ]
+    }
+  }
+}

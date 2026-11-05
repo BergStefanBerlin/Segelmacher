@@ -1,0 +1,86 @@
+{
+  "schema_version": "0.1",
+  "status": "rekonstruktion_keine_vermessungsbestaetigung",
+  "konventionen": "aerodynamik_konventionen.json",
+  "quellen": [
+    {
+      "id": "folkeboot_regeln",
+      "datei": "..\\Ideen\\Segel\\quellen\\NORDIC-FOLKBOAT-CLASS-RULES-2025-2028-incl-spinnaker.pdf",
+      "fundstelle": "9.20 bis 9.35, PDF-Seite 28; Riggmasse aus vorhandener Ideensammlung."
+    },
+    {
+      "id": "folkeboot_grosssegel_zeichnung",
+      "datei": "..\\Ideen\\Segel\\quellen\\8_Mainsail-Rev-3-July-2024_-1.pdf",
+      "fundstelle": "Zeichnung 8, Revision 3, Juli 2024; Kopfbreite maximal 150 mm."
+    },
+    {
+      "id": "folkeboot_fock_zeichnung",
+      "datei": "..\\Ideen\\Segel\\quellen\\9_Headsail_9_1_Rev4-July-2024_-1.pdf",
+      "fundstelle": "Zeichnung 9.1, Revision 4, Juli 2024; teilweise schwer maschinell lesbar."
+    },
+    {
+      "id": "optimist_vermessung",
+      "datei": "..\\Ideen\\Segel\\quellen\\Document_2045_20180605202313_en.pdf",
+      "fundstelle": "PDF-Seite 1: Kopflaenge maximal 1.24 m, Vorliek maximal 1.73 m, Achterliek maximal 2.80 m, Diagonale 2.45 bis 2.58 m, halbe Breite maximal 1.70 m."
+    }
+  ],
+  "folkeboot_grosssegel": {
+    "dateien": ["folkeboot\\meshes\\aerodynamik\\main.json", "folkeboot\\meshes\\aerodynamik\\main.obj"],
+    "annahmen": [
+      "Gerades Vorliek 8.75 m und waagerechtes Unterliek 3.30 m aus der vorhandenen Geometriesammlung als Modellmasse gewaehlt, keine bestaetigten Ist-Masse.",
+      "Gemaess 9.22: obere Breite 0.370 m bei 0.500 m Abstand vom Kopf, Dreiviertelbreite 1.310 m bei 2.280 m, Halbbreite 2.225 m bei 4.570 m.",
+      "Abstaende werden als direkte Strecken zum vorderen Kopfpunkt interpretiert; Breiten als kuerzeste Abstaende zum geraden Vorliek. Fuer Breite b und Kopfabstand d gilt x = -b und z = 8.75 - sqrt(d*d-b*b).",
+      "Kopfbreite 0.140 m gewaehlt, kleiner als die 0.150 m aus Zeichnung 8. Geradlinige Verbindung der Randpunkte; Latten und Liekrundungen nicht detailliert rekonstruiert.",
+      "Unterliek bleibt ungewoelbt und unverdreht: Die Klassenregel 9.21 schreibt ein durchgehendes, in der Baumnut gefuehrtes Liekseil vor."
+    ]
+  },
+  "folkeboot_fock": {
+    "dateien": ["folkeboot\\meshes\\aerodynamik\\fock.json", "folkeboot\\meshes\\aerodynamik\\fock.obj"],
+    "annahmen": [
+      "Vereinfachtes rechtwinkliges Dreieck mit Vorliek 5.50 m und Unterliek 2.54 m aus der Ideensammlung; insbesondere die Vorliekslaenge ist keine aus der Zeichnung bestaetigte Segellaenge.",
+      "Spitzer Kopf statt einer erfundenen detaillierten Kopfkontur. Zeichnungsvariante 9.1 dient als Bezug, Variante 9.2 ist nicht rekonstruiert.",
+      "9.32: Kopf-zu-Unterlieksmitte maximal 5.80 m; Breite bei 2.70 m vom Kopf maximal 1.270 m; Kopfbreite bei 0.20 m vom Kopf maximal 0.140 m.",
+      "Die drei Breiten-/Abstandsgrenzen werden fuer diese ebene Modellkontur numerisch geprueft. Dies ersetzt keine Klassenvermessung."
+    ]
+  },
+  "optimist": {
+    "dateien": ["optimist\\meshes\\aerodynamik\\main.json", "optimist\\meshes\\aerodynamik\\main.obj"],
+    "annahmen": [
+      "Viereckiges Sprietsegel mit Hals, Schothorn, Peak und Kehle. Kein dreieckiger Ersatz.",
+      "Gerades senkrechtes Vorliek 1.73 m und Kopfkante 1.24 m nach den Maximalmassen des Vermessungsformulars.",
+      "Unterliek 1.90 m als unbestaetigte Modellannahme aus der Ideensammlung, nicht aus dem Formular abgelesen.",
+      "Peak als Schnittpunkt des Kreises um den Hals mit Radius 2.52 m und des Kreises um die Kehle mit Radius 1.24 m; achterlicher oberer Schnittpunkt gewaehlt.",
+      "Die 2.52 m Hals-Peak-Strecke ist eine freie Konstruktionsannahme. Die genaue Zuordnung der Formular-Diagonale ist anhand des Original-Segelplans noch zu pruefen; weder diese Strecke noch die Kehle-Schothorn-Strecke wird hier als geprueftes ERS-Diagonalmass bezeichnet.",
+      "Gerade Kanten ohne Latten-/Achterlieksrundung. Das Achterliek darf kuerzer als das Klassenmaximum sein; 2.80 m werden nicht als zwingende Soll-Laenge erzwungen.",
+      "Ungewoelbtes, unverdrehtes Unterliek als vereinfachte Baumrandbedingung. Oberhalb der Kehle liegt das vordere horizontale Schnittende auf der Kopfkante, nicht auf dem Vorliek.",
+      "Am Peak verschwindet die Sehnenlaenge. Dort wird ein einzelner Punkt ohne Division durch die Sehnenlaenge exportiert."
+    ]
+  },
+  "raeumliche_form": {
+    "status": "angenommen_nicht_gemessen",
+    "beschreibung": "Drei Profilstationen bei eta 0/0.5/1: Grosssegel 0/10/8 Prozent Woelbung, Fock 10/10/8 Prozent. Woelbungsposition bei 40 Prozent der Sehne, Verwindung 0/-3/-6 Grad.",
+    "abgrenzung": "Keine aus den Klassenvorschriften belegte fliegende Segelform, keine Simulation und keine Polaren."
+  },
+  "validierung": {
+    "ergebnis": "bestanden",
+    "pruefungen": [
+      "JSON-Syntax, Konturverweise, geschlossene Kontur und Hals im Ursprung.",
+      "Folkeboot-Grosssegel: Querbreiten und direkte Kopfabstaende der drei Messpunkte mit absoluter Toleranz 1e-8 m.",
+      "Folkeboot-Fock: Kopf-Unterlieksmitte kleiner als 5.80 m; Breiten an den modellierten Kopfabstaenden kleiner als 1.270 beziehungsweise 0.140 m.",
+      "Optimist: Vorliek und Kopfkante mit absoluter Toleranz 1e-8 m; gerades Achterliek kuerzer als 2.80 m und direkte halbe Breite kleiner als 1.70 m.",
+      "Serialisierte OBJ-Dateien: endliche eindeutige Punkte, gueltige Dreiecksindizes, keine entarteten Dreiecke, konsistente Innenkantenorientierung und Topologie einer offenen zusammenhaengenden Flaeche.",
+      "Alle exportierten Unterliekspunkte beider Grosssegel liegen auf der geraden Linie zwischen Hals und Schothorn."
+    ],
+    "flaechen_m2": {
+      "folkeboot_grosssegel": { "eben": 18.272520, "obj_raeumlich": 18.542763 },
+      "folkeboot_fock": { "eben": 6.985000, "obj_raeumlich": 7.179189 },
+      "optimist": { "eben": 3.114507, "obj_raeumlich": 3.216160 }
+    },
+    "abgrenzung": "Geometrische Pruefung der gewaehlten Rekonstruktion, keine vollstaendige Klassenvermessung und keine aerodynamische Validierung."
+  },
+  "einschraenkungen": [
+    "Grundmodelle zur geometrischen Visualisierung und weiteren Verfeinerung, keine vermessenen Segel, keine Garantie der Klassenkonformitaet.",
+    "Die OBJ-Dateien sind offene Membranflaechen ohne Dicke. Einheiten Meter, Z nach oben, Hals im Ursprung; Anzeige gegebenenfalls beidseitig.",
+    "Keine Einbaulage im Boot und keine gespiegelten Dateien erforderlich."
+  ]
+}

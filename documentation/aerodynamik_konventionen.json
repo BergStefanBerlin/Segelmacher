@@ -1,0 +1,91 @@
+{
+  "schema_version": "0.1",
+  "konvention": {
+    "auftragsablage": {
+      "eingabe": "Dem Tool wird die Auftragsdatei uebergeben. Sie liegt im selben Ordner wie die Segeldatei.",
+      "relative_pfade": "Bezogen auf den Ordner der Auftragsdatei, nicht auf das Arbeitsverzeichnis des aufrufenden Programms."
+    },
+    "ausgabe": {
+      "ordner": "LookUp",
+      "ordnerbezug": "Unterordner des Ordners der uebergebenen Auftragsdatei; kein gesonderter Ausgabepfad erforderlich.",
+      "dateien": [
+        "lookup.json",
+        "summen.csv",
+        "profile.csv",
+        "kraefte.csv",
+        "pruefbericht.json",
+        "auftrag_ausgefuehrt.json"
+      ],
+      "summen": "dimensionslose_kraft_und_momentenvektoren",
+      "exportiertes_raster": "Feinstes berechnetes und erfolgreich geprueftes Raster.",
+      "eingabepruefsummen_speichern": true,
+      "bei_ungueltigen_punkten": "Auftrag als fehlgeschlagen kennzeichnen und Diagnose speichern; kein vollstaendiges Lookup als erfolgreich veroeffentlichen.",
+      "stille_ersatzwerte_erlaubt": false,
+      "qualitaetskennzeichnung": "Modell, Modellgrenzen und Nachweisstand in Metadaten und jeder Tabellenzeile ausweisen; ohne physikalischen Validierungsnachweis als ingenieurmodell_nicht_validiert kennzeichnen."
+    },
+    "bezuege": {
+      "flaeche": "ebene_grundkonturflaeche",
+      "laenge": "ebene_grundkonturflaeche_geteilt_durch_konturhoehe",
+      "reynoldszahl": "bezogen_auf_referenzlaenge",
+      "profil_reynoldszahl": "re_ref_mal_lokale_sehnenlaenge_geteilt_durch_referenzlaenge",
+      "momentenursprung": "hals",
+      "profilmoment_sehnenanteil": 0.25,
+      "anstellwinkel": "Azimut alpha der Windherkunft in der lokalen xy-Ebene; 0 Grad Wind aus +X, +90 Grad Wind aus +Y. Stroemungsgeschwindigkeit zeigt entgegengesetzt zur Windherkunft.",
+      "windneigung": {
+        "definition": "Elevation beta der Windherkunft gegen die lokale xy-Ebene; 0 Grad horizontal, +90 Grad aus +Z. Kein unmittelbarer Kraengungswinkel des Bootes.",
+        "windherkunft_einheitsvektor": "(cos(beta)*cos(alpha), cos(beta)*sin(alpha), sin(beta)); Winkel fuer trigonometrische Funktionen in Radiant.",
+        "stroemungsrichtung": "Negativer Windherkunftsvektor; Referenz-Re und Staudruck beziehen sich auf den Betrag der gesamten relativen Windgeschwindigkeit.",
+        "raster_deg": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+        "pol": "Bei beta = 90 Grad exakt Windherkunft (0,0,1); alle Azimutzeilen enthalten identische lokale Kraft- und Momentenvektoren.",
+        "grenzen": "Negative Elevationen sind nicht im Startraster enthalten. Keine Spiegelung oder Extrapolation ohne physikalisch begruendeten Vertrag.",
+        "modellfaehigkeit": "Geneigte Anstroemung erfordert ein explizit geeignetes raeumliches Hybridmodell einschliesslich spannweitiger Anstroemung und Polbehandlung."
+      }
+    },
+    "rechenmodell": {
+      "bezeichnung": "physikalisches_hybridmodell",
+      "status": "H1_ingenieurmodell_nicht_validiert",
+      "modellstand": "H1",
+      "anliegende_stroemung": "Analytische Fourier-Duennprofilrechnung der parabolischen Mittellinie; 256/512-Quadratur als getrennte numerische Referenz.",
+      "viskose_effekte": "Zweiseitige glatte Plattenreibung, expliziter Re-Uebergang und CL-Quadrat-Druckwiderstand; Re-verschobene stetige Abrissmischung, nicht kalibriert.",
+      "dreidimensionale_kopplung": "Spektrale Prandtl-Traglinie im Crossflow mit 12/16-Modenvergleich, 3D-Mittelflaechen-Impuls-/Reibungsmodell fuer Neigung. Gebundene Zirkulation vernachlaessigt Pfeilung; kein vollraeumliches Wirbelgitter. Abwind geht ohne Doppelzaehlung in Kutta-Joukowski ein.",
+      "abgeloeste_stroemung": "Lokaler normaler Impulsfluss und tangentiale Reibung an vier Sehnenpunkten; qualitative Hochwinkel-/Rueckwaertsschliessung ohne experimentellen Validierungsanspruch.",
+      "kraftansatzpunkte": "Modellgemaess aus Lastverteilung und Momenten bestimmen; Viertelsehne ist ein Profilmomentbezug, kein pauschal vorgeschriebener Druckpunkt.",
+      "gesamtmoment": "Summe aus Kreuzprodukt von Ortsvektor und Einzelkraft sowie den Eigenmomenten um den Hals.",
+      "nullsehnen": "Streifen mit exakt null Sehnenlaenge tragen keine Kraft bei; negative oder nicht endliche Sehnenlaengen sind Fehler.",
+      "grenzen": "Vorgegebene feste Segelform; keine Tuchverformung, zeitaufgeloeste Wirbelstroemung oder Mast-/Segelinterferenz.",
+      "modellfestlegung": "Dokumentationen/Modellfestlegung_Lookup.md; effektive Formeln/Parameter/Grenzen werden im Lookup und Auftragssnapshot selbsttragend gesichert.",
+      "offene_nachweise": "Gemessene Segelpolaren, viskose Abriss-/Hochwinkel-/Neigungsreferenzen, strenge numerische Startrasterabnahme und echter GPU-Backend."
+    },
+    "laengeneinheit": "m",
+    "winkeleinheit": "deg",
+    "lokales_koordinatensystem": {
+      "ursprung": "hals",
+      "x_positiv": "voraus",
+      "y_positiv": "backbord",
+      "z_positiv": "oben",
+      "bezugsebene": "xz"
+    },
+    "grundkontur": {
+      "interpolation": "stueckweise_linear"
+    },
+    "flaechenform": {
+      "darstellung": "mittelflaeche_ohne_dicke",
+      "hoehenkoordinate": "eta = (lokales_z - kleinstes_kontur_z) / (groesstes_kontur_z - kleinstes_kontur_z), vor Verwindung",
+      "profilschnitte": {
+        "ebene": "konstantes_lokales_z",
+        "sehnendefinition": "Strecke vom Vorliek zum Achterliek der ebenen Kontur.",
+        "sehnenkoordinate": "xi = 0 am Vorliek, xi = 1 am Achterliek",
+        "woelbungsmodell": "stueckweise_parabolisch",
+        "woelbungsformel": "y/c = m*(2*p*xi-xi*xi)/(p*p) fuer xi <= p; sonst m*((1-2*p)+2*p*xi-xi*xi)/((1-p)*(1-p))",
+        "parameterdefinition": "m = woelbungsverhaeltnis; p = woelbungsposition_relativ",
+        "positive_woelbungsrichtung": "lokales_positives_y_vor_verwindung",
+        "interpolation_ueber_eta": "linear"
+      },
+      "verwindung": {
+        "achse": "positive_lokale_z_achse_durch_den_vorliekspunkt_des_jeweiligen_schnitts",
+        "positive_drehung": "rechte_hand_regel",
+        "anwendungsreihenfolge": "Konturschnitt erzeugen, Woelbung anwenden, Schnitt um seinen Vorliekspunkt drehen."
+      }
+    }
+  }
+}

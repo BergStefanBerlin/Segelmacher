@@ -1,0 +1,160 @@
+meta:
+  version: "3.0"
+  created: "2026-11-05"
+  status: "geometry_verified"
+  strict_mode: False
+  units: "SI (m, N, rad intern / deg in CSV)"
+  coordinate_system: "x voraus, y BACKBORD positiv, z oben; Ursprung Mastfuss (MDP)"
+  moment_reference: "Hals des jeweiligen Segels (Grosssegel = Gooseneck, Fock = Vorstagfuss)"
+  wind_reference: "scheinbarer Wind (apparent)"
+  angle_convention: "-180..+180 deg, 0 = Wind von vorn (vom Vorliek)"
+rig:
+  420:
+    mast_length_m: 6.26
+    lower_point_height_m: 1.16
+    mainsail_luff_max_m: 4.9
+    headsail_hoist_m: 4.52
+    boom_outer_point_m: 2.4
+    mast_fore_aft_m: 0.05
+    mast_transverse_m: 0.045
+    confidence: "verified"
+  folkboat:
+    lower_mast_point_above_deck_m: 1.0
+    upper_mast_point_above_lower_m: 8.75
+    boom_point_from_mast_aft_m: 3.38
+    forestay_above_lower_m: 5.5
+    mast_dia_at_deck_m: 0.105
+    confidence: "verified"
+  optimist:
+    luff_max_m: 1.73
+    head_max_m: 1.24
+    leech_max_m: 2.8
+    diagonal_min_m: 2.45
+    diagonal_max_m: 2.58
+    mast_dia_m: 0.03
+    confidence: "verified_partial"
+sails:
+  - id: "420_main"
+    class: "420"
+    type: "mainsail"
+    luff_m: 4.9
+    foot_m: 1.92
+    leech_m: 5.4
+    head_width_m: 0.115
+    area_computed_m2: 7.78
+    area_class_nominal_m2: 7.45
+    chord_profile_mm: [[0, 1920], [1350, 2130], [2700, 1630], [4050, 995], [4800, 480], [5400, 115]]
+    chord_profile_note: "Abstand vom Schothorn aufwaerts; Querbreiten = Klassenmaxima G.3.3"
+    mean_chord_m: 1.83
+    reynolds_Mio: [0.37, 0.61, 0.85]
+    tack_position_m: [0.0, 0.0, 1.16]
+    confidence: "verified"
+    sources: [Int. 420 Class Rules 2023, G.3.3 + Diagram 17, F.2.5, F.3.5]
+  - id: "420_jib"
+    class: "420"
+    type: "jib"
+    luff_m: 3.5
+    foot_m: 1.75
+    leech_m: 3.2
+    head_width_m: 0.04
+    foot_median_m: 3.36
+    area_computed_m2: 2.79
+    area_class_nominal_m2: 2.8
+    chord_profile_mm: [[0, 1750], [875, 1310], [1750, 875], [2625, 440], [3500, 40]]
+    chord_profile_note: "dreieckig, Achterliek gerade (G.4.1.1) - Profil aus linearer Interpolation"
+    mean_chord_m: 1.02
+    reynolds_Mio: [0.2, 0.34, 0.48]
+    tack_position_m: [0.0, 0.0, 0.3]
+    confidence: "verified"
+    sources: [Int. 420 Class Rules 2023, G.4.2, F.2.5 headsail hoist]
+  - id: "folk_main"
+    class: "folkboat"
+    type: "mainsail"
+    luff_m: 8.75
+    foot_m: 3.3
+    leech_m: 9.14
+    head_width_m: 0.14
+    area_computed_m2: 18.26
+    area_class_nominal_m2: 17.0
+    chord_profile_mm: [[0, 0], [500, 370], [2280, 1310], [4570, 2225], [9140, 3300]]
+    chord_profile_note: "Abstand vom Kopf abwaerts; 9.22 Querbreiten"
+    mean_chord_m: 3.3
+    reynolds_Mio: [0.66, 1.1, 1.54]
+    tack_position_m: [0.0, 0.0, 1.0]
+    confidence: "verified"
+    sources: [Nordic Folkboat Rules 2025, 9.22, 6.1.11 M.B. I/III, 6.3.3 Boom Point, Dwg 8]
+  - id: "folk_jib"
+    class: "folkboat"
+    type: "jib"
+    luff_m: 5.5
+    foot_m: 2.54
+    centre_measurement_m: 5.8
+    head_width_m: 0.14
+    mid_girth_m: 1.27
+    mid_girth_pos_m: 2.7
+    area_computed_m2: 6.99
+    area_class_nominal_m2: 7.0
+    chord_profile_mm: [[0, 0], [700, 180], [2700, 1270], [4200, 1900], [5500, 2540]]
+    chord_profile_note: "aus 9.32 Kopfbreite + Mittelgirth abgeleitet"
+    mean_chord_m: 2.54
+    reynolds_Mio: [0.51, 0.85, 1.19]
+    tack_position_m: [0.0, 0.0, 0.3]
+    confidence: "derived"
+    sources: [Nordic Folkboat Rules 2025, 9.32, 7.xx Forestay 5500, Dwg 9]
+  - id: "opti_main"
+    class: "optimist"
+    type: "mainsail"
+    luff_m: 1.73
+    foot_m: 1.9
+    leech_m: 2.8
+    head_m: 1.24
+    diagonal_m: 2.52
+    area_computed_m2: 3.2
+    area_class_nominal_m2: 3.5
+    chord_profile_mm: [[0, 1900], [600, 1450], [1200, 1000], [1800, 600], [2400, 300], [2800, 0]]
+    chord_profile_note: "Viereck (Sprietsegel), aus IODA-Formular + Klassennormflaeche"
+    mean_chord_m: 1.44
+    reynolds_Mio: [0.29, 0.48, 0.67]
+    tack_position_m: [0.0, 0.0, 0.35]
+    confidence: "verified_partial"
+    sources: [IODA Sail Measurement Form, IODA Sail Plan]
+grid:
+  angles_deg:
+    start: -180
+    stop: 180
+    step: 1
+    count: 361
+  reynolds_steps_Mio: [0.2, 0.3, 0.45, 0.7, 1.05, 1.55]
+  trim_matrix:
+    camber: [0.08, 0.1, 0.12, 0.14]
+    twist_deg: [0, -3, -6, -9]
+    draft_pos: [0.35, 0.45]
+    total: 32
+  height_grid:
+    base_step_m: 0.25
+    refine_above: 0.75
+    refined_step_m: 0.125
+checks:
+  420_main_area_dev_pct: 4.4
+  folk_main_area_dev_pct: 7.4
+  420_jib_area_dev_pct: -0.4
+  folk_jib_area_dev_pct: -0.1
+  opti_area_dev_pct: -8.4
+  note: "Abweichungen positiv = Klassenmaxima, daher systematisch etwas gross"
+open_items:
+  - id: "OI-1"
+    item: "420 Fock: Tack-Hoehe ueber Deck"
+    impact: "low"
+    action: "am Boot messen"
+  - id: "OI-2"
+    item: "Folk Fock: Vorliek exakt (Forestay 5500 angenommen)"
+    impact: "medium"
+    action: "Segel messen"
+  - id: "OI-3"
+    item: "Opti: Unterliek nicht im IODA-Formular"
+    impact: "medium"
+    action: "Baumlaenge messen"
+  - id: "OI-4"
+    item: "Mastdurchmesser je Boot fuer Interferenzfaktor"
+    impact: "medium"
+    action: "messsen"
