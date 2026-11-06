@@ -1,7 +1,7 @@
 # C++-Schnittstellenregister
 
 Vertrag 1, freigegeben durch den Implementierungsauftrag vom 05.11.2026.
-Header: `Core/include/segel/core.hpp`. Keine GUI-/Dateisystemabhaengigkeit.
+Header: `Code/Core/include/segel/core.hpp`. Keine GUI-/Dateisystemabhaengigkeit.
 Private Implementierungsdetails und Drittbibliothekstypen werden nicht exportiert.
 
 | ID | Name | Status | Vertrag |
@@ -23,7 +23,7 @@ Berechnung interpretiert. Aufrufer besitzt zurueckgegebene UTF-8-Strings.
 Argumente werden nur waehrend des Aufrufs gelesen. Keine ABI-Stabilitaetszusage
 ueber Compiler-/Standardbibliotheksversionen; statische Bibliothek.
 Kopieren des Context ist geloescht und kein eigener Export.
-Vertragstests: `Core/tests/core_tests.cpp`.
+Vertragstests: `Code/Core/tests/core_tests.cpp`.
 
 ## JSON-Feldvertrag (Version 1)
 

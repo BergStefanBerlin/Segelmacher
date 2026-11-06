@@ -92,9 +92,9 @@ Woelbung und Verwindung sind vorlaeufige Modellannahmen.
 
 Referenzen:
 
-- [Gemeinsame Konventionen](../documentation/aerodynamik_konventionen.json)
-- [420-Herleitung](../documentation/420_segel_herleitung.json)
-- [Folkeboot-/Optimist-Herleitung](../documentation/folkeboot_optimist_segel_herleitung.json)
+- [Gemeinsame Konventionen](../Dokumentationen/aerodynamik_konventionen.json)
+- [420-Herleitung](../Dokumentationen/420_segel_herleitung.json)
+- [Folkeboot-/Optimist-Herleitung](../Dokumentationen/folkeboot_optimist_segel_herleitung.json)
 
 Die Konventionen beschreiben Geometrie, Winkel und das physikalische
 Hybridmodell als Ziel. Der Erstumfang soll physikalisch begruendete Lookups
@@ -805,7 +805,7 @@ C:\_DATEN\Code\Python\Organisierter Code\Segelphysik\Modelle\420\meshes\aerodyna
 
 Vor Testarbeiten wird diese Datei separat gesichert und die Kopie per SHA-256
 mit dem Original verglichen. Die am 05.11.2026 erstellte
-[Sicherung](../Backups/420_main/main_20261105_195154_358.json) hat die SHA-256-Pruefsumme
+[Sicherung/Testreferenz](../Code/tests/daten/main_20261105_195154_358.json) hat die SHA-256-Pruefsumme
 `E8C47FFCA62459C08AE525320794B19884A72544A2857C77606473CCEA862EB2`.
 
 Automatisierte Tests verwenden isolierte Kopien von Geometrie, Auftrag und

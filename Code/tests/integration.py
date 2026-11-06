@@ -14,9 +14,9 @@ import time
 import uuid
 
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 EXPECTED = "e8c47ffca62459c08ae525320794b19884a72544a2857c77606473ccea862eb2"
-BACKUP = ROOT / "Backups" / "420_main" / "main_20261105_195154_358.json"
+BACKUP = ROOT / "Code" / "tests" / "daten" / "main_20261105_195154_358.json"
 
 
 def sha(path):
@@ -40,8 +40,8 @@ def main():
         p = folder / (name + "_" + uuid.uuid4().hex)
         p.mkdir()
         shutil.copyfile(BACKUP, p / "main.json")
-        shutil.copyfile(ROOT / "documentation" / "aerodynamik_konventionen.json", p / "konventionen.json")
-        job = json.loads((ROOT / "examples" / "Auftragsdatei.json").read_text(encoding="utf-8"))
+        shutil.copyfile(ROOT / "Dokumentationen" / "aerodynamik_konventionen.json", p / "konventionen.json")
+        job = json.loads((ROOT / "Code" / "ressourcen" / "examples" / "Auftragsdatei.json").read_text(encoding="utf-8"))
         job["ressourcen"]["max_prozessorzahl"] = budget
         if name.startswith("cpu_"):
             job["ressourcen"]["gpu"] = "aus"
@@ -228,7 +228,7 @@ def main():
         invoke(target, expected=5)
         assert (target / "LookUp.lock").exists()
         target, cancel_job = fixture("cancel", 1)
-        reference_job = json.loads((ROOT / "examples" / "Auftragsdatei.json").read_text(encoding="utf-8"))
+        reference_job = json.loads((ROOT / "Code" / "ressourcen" / "examples" / "Auftragsdatei.json").read_text(encoding="utf-8"))
         cancel_job["betriebspunkte"] = reference_job["betriebspunkte"]
         (target / "Auftragsdatei.json").write_text(json.dumps(cancel_job), encoding="utf-8")
         command = [str(exe), "lookup", "--auftrag", str(target / "Auftragsdatei.json")]

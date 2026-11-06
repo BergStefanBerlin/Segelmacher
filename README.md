@@ -10,7 +10,7 @@ gekoppelte Grosssegel-/Fock-Rechnung.
 cmake -S . -B build -DBUILD_TESTING=ON
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
-cmake -S Core -B build-core -DBUILD_TESTING=ON
+cmake -S Code\Core -B build-core -DBUILD_TESTING=ON
 cmake --build build-core --config Release
 ctest --test-dir build-core -C Release --output-on-failure
 ```
@@ -23,9 +23,24 @@ nlohmann/json 3.11.3 ist MIT-lizenziert mitgeliefert; kein Netz beim Build/Lauf.
 CTest verwendet neben nativen Vertragstests optional Python 3 (Standardbibliothek)
 als **Prozess-/CSV-Testtreiber**, nicht als aerodynamischen Rechenkern.
 
+## Ordnerstruktur
+
+- `Code\CLI`, `Code\Core`: CLI und separat baubarer Rechenkern.
+- `Code\tests`, `Code\Core\tests`: Prozess-/CLI- und Core-Vertragstests.
+- `Code\tests\daten`: unveraenderte 420-Testreferenz mit dokumentierter SHA-256.
+- `Code\third_party`, `Code\ressourcen\examples`: Drittbibliothek und Auftragsvorlage.
+- `Dokumentationen`: Markdown-Dokumentation und JSON-Konventionen/Herleitungen.
+- `.github`, `AGENTS.md`, `Ideen`, `Spezifikationen`, `Umsetzungsplaene` bleiben am Stamm.
+- `build`, `build-core`: bestehende Build-Verzeichnisse; Scratchdaten unter `build\scratch`.
+
+Der Release-Pfad bleibt `build\Release\SegelMacher.exe`.
+Nur native Vertragstests ohne Lookup-Integration:
+`ctest --test-dir build -C Release -R "^(cli_contract|core_contract)$" --output-on-failure`.
+Der optionale Python-Integrationstest erzeugt isolierte Lookups.
+
 ## Auftrag
 
-`examples\Auftragsdatei.json` ist die H1-Vertragsvorlage. Geometrie und
+`Code\ressourcen\examples\Auftragsdatei.json` ist die H1-Vertragsvorlage. Geometrie und
 Konventionen daneben kopieren und Pfade explizit anpassen.
 Bestehende Entwurfsauftraege werden nicht automatisch freigegeben.
 
@@ -106,13 +121,13 @@ Diese dimensionslosen numerischen Kennzahlen sind keine physikalische
 Genauigkeitsangabe gegen Messdaten.
 
 ```powershell
-python tests\integration.py --exe build\Release\SegelMacher.exe
-python tests\integration.py --exe build\Release\SegelMacher.exe --full --strict
-python tests\integration.py --exe build\Release\SegelMacher.exe --full
+python Code\tests\integration.py --exe build\Release\SegelMacher.exe
+python Code\tests\integration.py --exe build\Release\SegelMacher.exe --full --strict
+python Code\tests\integration.py --exe build\Release\SegelMacher.exe --full
 ```
 
 Jeder Lauf verwendet einen eigenen Ordner unter `build`, die vorhandene
-420-Sicherung und eine Konventionskopie. Keine Zugriffe schreibend auf
+420-Sicherung unter `Code\tests\daten` und eine Konventionskopie. Keine Zugriffe schreibend auf
 externe Modelle. `--full` prueft 21600 Summenzeilen und alle Einzelmomente.
 **Ohne `--strict` verwendet ausschliesslich der Testauftrag gelockerte
 Toleranzen (absolut/relativ 0.5) fuer Produkt-/Prozessvertraege; dies ist

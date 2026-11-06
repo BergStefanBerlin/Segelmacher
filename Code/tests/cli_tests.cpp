@@ -39,9 +39,11 @@ int main() {
         const auto token=std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         const auto work=std::filesystem::current_path()/("cli_contract_"+token);
         std::filesystem::create_directory(work);
-        std::filesystem::copy_file(source/"Backups"/"420_main"/"main_20261105_195154_358.json",work/"main.json");
-        std::filesystem::copy_file(source/"documentation"/"aerodynamik_konventionen.json",work/"konventionen.json");
-        J job=cli::read(source/"examples"/"Auftragsdatei.json");
+        const auto reference=source/"Code"/"tests"/"daten"/"main_20261105_195154_358.json";
+        check(cli::hash(reference)=="e8c47ffca62459c08ae525320794b19884a72544a2857c77606473ccea862eb2");
+        std::filesystem::copy_file(reference,work/"main.json");
+        std::filesystem::copy_file(source/"Dokumentationen"/"aerodynamik_konventionen.json",work/"konventionen.json");
+        J job=cli::read(source/"Code"/"ressourcen"/"examples"/"Auftragsdatei.json");
         job["ressourcen"]["max_prozessorzahl"]=1;job["ressourcen"]["gpu"]="aus";
         {std::ofstream out(work/"Auftragsdatei.json");out<<job.dump();}
         cli::cancelled=true;

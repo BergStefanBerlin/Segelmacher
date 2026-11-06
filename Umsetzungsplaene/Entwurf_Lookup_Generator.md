@@ -1,6 +1,7 @@
 # Umsetzungsplan: Lookup-Generator
 
-Stand: 05.11.2026  
+Stand: 06.11.2026
+
 Status: **CPU-/GPU-Implementierung und strenger numerischer Vollrasterlauf
 mit 0.0005/0.01 bestanden; physikalische Validierung und Nutzerabnahme offen.**
 
@@ -52,7 +53,7 @@ Technische Umsetzung, Integration, Numerik und fachliche Abnahme sind getrennt.
 |---|---|---|---|
 | U-S-000001 Finalisieren/Modell festlegen | A-S-00008 bis A-S-00012, A-S-00028 | keine | Spezifikation finalisiert, IDEE-Zuordnung erhalten; `Dokumentationen/Modellfestlegung_Lookup.md`. Quellen/Formeln/Grenzen dokumentiert, keine gemessenen Segelreferenzen. |
 | U-S-000002 Projektgeruest/API | A-S-00026 | U-S-000001 | C++17/CMake, CLI und eigenstaendiger statischer Core; CPPI-0001..0008; native Gesamt- und Core-CTest. |
-| U-S-000003 Eingabevertrag | A-S-00001, A-S-00004, A-S-00007 | U-S-000002 | Versionen/Pfade/Status/Duplikate/Optionen/lokale Re, explizite H1-Parameter; `CLI/job.cpp`, `examples/Auftragsdatei.json`, Vertragstests. |
+| U-S-000003 Eingabevertrag | A-S-00001, A-S-00004, A-S-00007 | U-S-000002 | Versionen/Pfade/Status/Duplikate/Optionen/lokale Re, explizite H1-Parameter; `Code/CLI/job.cpp`, `Code/ressourcen/examples/Auftragsdatei.json`, Vertragstests. |
 | U-S-000004 Geometrie/Mehrsegelflaechen vorbereiten | A-S-00005, A-S-00006, A-S-00025 | U-S-000003 | Polygon-/Schnitt-/Formkern, getrennte Segel-ID/Lasten und starre Transformation. Unit-Tests Dreieck/Viereck, Form, Transformation; keine Interferenz. |
 | U-S-000005 Profil/Hybridmodell | A-S-00008 bis A-S-00012, A-S-00028 | U-S-000001, U-S-000004 | Fourier/Plattenreibung/Abriss/gekoppelte spektrale Traglinie/raeumliche Impulsschliessung implementiert. Analytische und Symmetrie-Tests vorhanden. Viskose Abriss-/Hochwinkel-/Neigungsreferenzdaten fehlen: **fachliche Abnahme offen**. |
 | U-S-000006 Lastintegration | A-S-00013 bis A-S-00015 | U-S-000005 | Positionierte Einzelbeitraege und freie Eigenmomente, Wirkungslinie/Restmoment/Schwelle; native Momenten- und CSV-Summationstests. |
@@ -64,6 +65,36 @@ Technische Umsetzung, Integration, Numerik und fachliche Abnahme sind getrennt.
 | U-S-000012 Integration/Abgleich | A-S-00001 bis A-S-00030 | U-S-000008, U-S-000011 | Isolierte 420-Tests, Schutz-/CSV-/Momenten-/Hash-/Pol-/CPU-Tests. Verbleibende fachliche, strenge numerische und GPU-Abnahmen bleiben ausdruecklich offen. |
 
 ### Nachweisbewertung
+
+Ordnerbereinigung vom 06.11.2026 (bestehende Schritte U-S-000002,
+U-S-000003 und U-S-000012; keine fachliche Vertragsaenderung):
+
+- Code liegt unter `Code/CLI`, `Code/Core`, `Code/tests` und `Code/third_party`;
+  Beispiele unter `Code/ressourcen/examples`, JSON-/Markdown-Dokumentation
+  gemeinsam unter `Dokumentationen`. Die 420-Sicherung ist unveraendert als
+  Testreferenz unter `Code/tests/daten/main_20261105_195154_358.json` abgelegt.
+- Alle Umzuege per `Move-Item`, nichts geloescht. Root-Probedaten liegen unter
+  `build/scratch`; leere ehemalige Ordner wurden dort ebenfalls aufbewahrt.
+  Bestehende Build-Verzeichnisse bleiben erhalten. Die alte eigenstaendige
+  Core-Konfiguration (`CMakeCache.txt`, `CMakeFiles`) liegt wegen des geaenderten
+  Quellordners unter `build-core/scratch/konfiguration_vor_code_umzug`.
+- Gesamtprojekt: `cmake -S . -B build -DBUILD_TESTING=ON`, Release-Build und
+  native `cli_contract`/`core_contract`: **2/2 bestanden** (0.15 s).
+  Release-Exe bleibt `build/Release/SegelMacher.exe`.
+- Eigenstaendiger Core: `cmake -S Code\Core -B build-core -DBUILD_TESTING=ON`,
+  Release-Build und Core-CTest: **1/1 bestanden** (0.12 s).
+- Python-Testtreiber: Syntax, Repositorywurzel, Testreferenz und Beispielpfade
+  geprueft; **kein Integrationstest und kein Lookup-Lauf ausgefuehrt**.
+  Dies ersetzt keinen neuen numerischen oder physikalischen Nachweis.
+- Externe 420-main/fock-Auftraege: ausschliesslich den Konventionspfad von
+  `documentation` auf `Dokumentationen` geaendert; Rueckersetzung dieses
+  Pfadsegments reproduziert jeweils die vorherige Datei-SHA-256.
+  Relative Eingabepfade/JSON und CLI-`pruefen` read-only erfolgreich (Exitcode 0).
+  Alle 19 weiteren externen Dateien (Geometrien, Lookups, Diagnosen und
+  Auftragsbackup) sowie vier verschobene Dokumentations-JSONs sind per
+  Vorher-/Nachher-SHA-256 unveraendert. Die Sicherungs-SHA-256 bleibt
+  `E8C47FFCA62459C08AE525320794B19884A72544A2857C77606473CCEA862EB2`.
+- Kein Commit, Push, Tag oder Release ausgefuehrt.
 
 - Native Gesamt- und eigenstaendige Core-Builds: MSVC 19.44, VS 2022,
   CMake/CTest aus installiertem Visual-Studio-Verzeichnis. Letzter
@@ -188,7 +219,7 @@ Referenz fuer Integrations- und Ende-zu-Ende-Tests:
 C:\_DATEN\Code\Python\Organisierter Code\Segelphysik\Modelle\420\meshes\aerodynamik\main\main.json
 ```
 
-Die [separate Sicherung](../Backups/420_main/main_20261105_195154_358.json)
+Die [separate Sicherung/Testreferenz](../Code/tests/daten/main_20261105_195154_358.json)
 ist vorhanden. SHA-256:
 `E8C47FFCA62459C08AE525320794B19884A72544A2857C77606473CCEA862EB2`.
 

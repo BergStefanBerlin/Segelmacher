@@ -23,7 +23,7 @@ Aktionen kurz und auf Deutsch.
   `cmake --build build --config Release`,
   `ctest --test-dir build -C Release --output-on-failure`.
   Der Core muss auch ohne GUI separat baubar und testbar bleiben
-  (`cmake -S Core -B build-core -DBUILD_TESTING=ON` mit anschließendem
+  (`cmake -S Code\Core -B build-core -DBUILD_TESTING=ON` mit anschließendem
   Build/CTest). Bei fehlendem `cmake`/`ctest` auf PATH den installierten
   Visual-Studio-CMake-Pfad oder eine Developer PowerShell verwenden.
   Python/pytest und Qt sind kein Testpfad dieses C++-Projekts.
