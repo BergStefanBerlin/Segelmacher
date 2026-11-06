@@ -44,6 +44,23 @@ Pruefung eines noch laufenden Auftrags entfernen.
 
 Stdout ist genau ein JSON-Objekt, auch bei Hilfe/Fehler.
 Stderr enthaelt zeitgestempelte deutsche Phasen/Fortschritt.
+Im interaktiven VT-Terminal stehen darunter zwei fest aktualisierte Balken:
+Gesamt blau (abgeschlossene Pakete / 6 und aktuelles Paket), Paket gruen
+(erledigte / geplante Einheiten), offener Anteil grau. Meldungen bleiben
+oberhalb erhalten. Unbekannte Arbeit zeigt `0 / ?`; erfolgreicher Abschluss
+zeigt erst nach Veroeffentlichung 6 / 6. Umgeleitete Ausgabe bleibt reiner
+Text ohne Farben oder Cursorsteuerung. Dies gilt auch fuer den Release-Build.
+Der Paketbalken zeigt `(verstrichene Dauer / geschaetzte Gesamtdauer)`
+und separat `Verbleibende Zeit`, beispielsweise
+`(00:03:53 / 01:34:16) | Verbleibende Zeit: 01:30:23`.
+Die Gesamtschaetzung ist verstrichene Zeit plus Restzeit, nicht die
+abnehmende Restzeit allein. Bei konstantem Durchsatz bleibt sie konstant;
+bei geaendertem Durchsatz wird sie korrigiert. Alle drei Zeiten verwenden
+immer `hh:mm:ss`, einschliesslich fuehrender Nullfelder (z.B. `00:00:12`).
+Sekunden und Minuten liegen jeweils zwischen 0 und 59.
+Die Restzeit wird aus dem bisherigen mittleren Durchsatz des laufenden
+Rechenabschnitts geschaetzt, bei Abschnittswechsel zurueckgesetzt und ist
+keine Zusage. Ohne erledigte Einheiten steht `wird ermittelt`.
 Codes: 0 erfolgreich, 2 Aufruf/Eingabe, 3 Verfahren/Ressourcen,
 4 Rechnung/Qualitaet, 5 Ausgabe/Sperre, 130 kooperativer Abbruch.
 Ctrl+C beendet nur die eigenen Worker. Kein Unterprozess/externes Solverprogramm.

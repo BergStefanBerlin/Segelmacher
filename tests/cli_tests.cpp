@@ -1,4 +1,5 @@
 #include "job.hpp"
+#include "progress.hpp"
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -7,6 +8,19 @@ int main() {
     try {
         int checks=0;
         auto check=[&](bool ok){++checks;if(!ok)throw std::runtime_error("CLI contract assertion "+std::to_string(checks));};
+        check(cli::progress_line("Gesamt",5,6,"\x1b[94m","Export").find("5 / 6  | Export")!=std::string::npos);
+        check(cli::progress_line("Paket ",999,49680,"\x1b[92m").find("999 / 49680")!=std::string::npos);
+        check(cli::progress_line("Paket ",0,0,"\x1b[92m").find("0 / ?")!=std::string::npos);
+        check(cli::progress_line("Paket ",8,6,"\x1b[92m").find("6 / 6")!=std::string::npos);
+        check(cli::progress_time(233,233,5656)=="(00:03:53 / 01:34:16) | Verbleibende Zeit: 01:30:23");
+        check(cli::progress_time(10,0,100)=="(00:00:10 / wird ermittelt) | Verbleibende Zeit: wird ermittelt");
+        check(cli::progress_time(10,100,100)=="(00:00:10 / 00:00:10) | Verbleibende Zeit: 00:00:00");
+        check(cli::progress_time(20,20,100)=="(00:00:20 / 00:01:40) | Verbleibende Zeit: 00:01:20");
+        check(cli::progress_duration(59)=="00:00:59");
+        check(cli::progress_duration(60)=="00:01:00");
+        check(cli::progress_duration(3599)=="00:59:59");
+        check(cli::progress_duration(3600)=="01:00:00");
+        check(cli::progress_duration(5)=="00:00:05");
         check(cli::dispatch({"--hilfe"})["exitcode"]==0);
         check(cli::dispatch({"--version"})["exitcode"]==0);
         check(cli::dispatch({})["exitcode"]==2);

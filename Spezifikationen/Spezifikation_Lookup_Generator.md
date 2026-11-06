@@ -241,9 +241,27 @@ Abschluss gezaehlt, bei GPU-Arbeit nach Bestaetigung ihrer Fertigstellung.
 Einzelne Worker oder aufgerufene Solver duerfen keine fremden Ausgaben in die
 maschinenlesbare Standardausgabe einschleusen.
 
-Im interaktiven Terminal darf eine Statuszeile aktualisiert werden.
+Im interaktiven VT-Terminal werden zwei uebereinanderstehende Balken
+am selben Ort aktualisiert: oben blau fuer abgeschlossene Aufgabenpakete
+von sechs samt aktuellem Paketnamen, unten gruen fuer erledigte/geplante
+Einheiten des laufenden Rechenabschnitts. Offene Balkenteile sind grau;
+unbekannte Einheiten zeigen `0 / ?`. Nach erfolgreicher Publikation
+zeigt der obere Balken 6 / 6. Die Darstellung gilt auch im Release-Build.
+Der untere Balken enthaelt zusaetzlich verstrichene Dauer und geschaetzte
+Gesamtdauer im Format `(00:03:53 / 01:34:16)`, gefolgt von
+`Verbleibende Zeit: 01:30:23`. Gesamtdauer ist verstrichene Dauer
+plus geschaetzte Restdauer; sie bleibt bei konstantem Durchsatz konstant,
+kann aber bei veraendertem Durchsatz korrigiert werden.
+Alle drei Zeiten verwenden immer `hh:mm:ss` mit fuehrenden Nullfeldern,
+beispielsweise `00:00:12`. Felder sind mindestens zweistellig; Minuten
+und Sekunden sind jeweils maximal 59.
+Grundlage ist der
+mittlere Durchsatz erledigter Einheiten des aktuellen Rechenabschnitts.
+Bei Abschnittswechsel beginnt die Schaetzung neu; ohne erledigte Einheiten
+steht `wird ermittelt`. Unterschiedliche Kosten einzelner Einheiten koennen
+die Schaetzung veraendern; sie ist keine Laufzeitzusage.
 Textmeldungen bleiben lesbar erhalten; Warnungen und Fehler unterbrechen
-die Statuszeile sauber. Bei Umleitung in eine Datei oder Aufruf aus einem
+die Balken sauber. Bei Umleitung in eine Datei oder Aufruf aus einem
 anderen Programm werden normale zeilenweise Meldungen ohne ANSI-Steuerzeichen
 oder Wagenruecklauf-Ueberschreibungen geschrieben. Fortschritt wird dabei
 hoechstens einmal pro Sekunde periodisch ausgegeben, zusaetzlich bei

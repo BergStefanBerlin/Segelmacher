@@ -1,6 +1,7 @@
 #include "job.hpp"
 #include "segel/core.hpp"
 #include "opencl_backend.hpp"
+#include "progress.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -18,6 +19,8 @@
 #define NOMINMAX
 #include <windows.h>
 #include <bcrypt.h>
+#else
+#include <unistd.h>
 #endif
 namespace cli {
 std::atomic<bool> cancelled{false};
@@ -28,7 +31,66 @@ constexpr const char* quality="ingenieurmodell_nicht_validiert";
 constexpr const char* model="H1";
 struct Logger {
     Clock::time_point start=Clock::now();
+    bool terminal=false;
+    mutable bool visible=false;
+    mutable size_t packages=0,units=0,total_units=0;
+    mutable std::string current="Eingabepruefung";
+    mutable Clock::time_point section_start=Clock::now();
+#ifdef _WIN32
+    HANDLE handle=GetStdHandle(STD_ERROR_HANDLE);
+    DWORD original_mode=0;
+#endif
+    Logger() {
+#ifdef _WIN32
+        terminal=GetConsoleMode(handle,&original_mode)&&
+            SetConsoleMode(handle,original_mode|ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+#else
+        terminal=isatty(STDERR_FILENO)!=0;
+#endif
+    }
+    ~Logger() {
+        if(visible)std::cerr<<"\x1b[0m"<<std::flush;
+#ifdef _WIN32
+        if(terminal)SetConsoleMode(handle,original_mode);
+#endif
+    }
+    void clear() const {
+        if(visible) {
+            std::cerr<<"\x1b[2A\r\x1b[2K\n\x1b[2K\r\x1b[1A";
+            visible=false;
+        }
+    }
+    void draw() const {
+        if(!terminal)return;
+        std::cerr<<progress_line("Gesamt",packages,6,"\x1b[94m",current)<<"\n"
+                 <<progress_line("Paket ",units,total_units,"\x1b[92m",
+                     progress_time(std::chrono::duration<double>(Clock::now()-section_start).count(),units,total_units))
+                 <<"\n"<<std::flush;
+        visible=true;
+    }
+    void progress(const std::string& phase,size_t done,size_t total,
+                  const std::string& fallback) const {
+        if(phase!=current||done<units||total!=total_units||done==0) section_start=Clock::now();
+        if(!terminal) {
+            current=phase;units=done;total_units=total;
+            log(phase,fallback+" | "+progress_time(
+                std::chrono::duration<double>(Clock::now()-section_start).count(),done,total));
+            return;
+        }
+        clear();current=phase;units=done;total_units=total;draw();
+    }
     void log(const std::string& phase,const std::string& text,const char* severity="INFO") const {
+        if(terminal) {
+            clear();
+            const std::array<const char*,6> phases={"Eingabepruefung","Geometrieaufbereitung",
+                "Profilberechnung","Gesamtsegelintegration","Qualitaetspruefung","Export"};
+            for(size_t i=0;i<phases.size();++i)if(phase==phases[i]&&current!=phase) {
+                packages=i;current=phase;units=0;total_units=0;section_start=Clock::now();
+            }
+            if(phase=="Export"&&text.find("Gesamt: 100 %")!=std::string::npos) {
+                packages=6;units=total_units;current="Abgeschlossen";
+            }
+        }
         auto now=std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
         std::tm tm{};
 #ifdef _WIN32
@@ -38,6 +100,7 @@ struct Logger {
 #endif
         std::cerr<<std::put_time(&tm,"%H:%M:%S")<<" "<<severity<<" ["<<phase<<"] "<<text
                  <<" | Laufzeit: "<<std::chrono::duration_cast<std::chrono::seconds>(Clock::now()-start).count()<<" s\n";
+        if(terminal&&std::string(severity)!="FEHLER")draw();
     }
 };
 void ensure(bool b,int code,const std::string& text) { if(!b)throw Error(code,text); }
@@ -307,11 +370,12 @@ std::vector<R> batch(const std::vector<Case>& cases,const Input& input,const Log
     try {for(int i=0;i<input.budget;++i)threads.emplace_back(worker);}
     catch(...) {failed=true;for(auto& t:threads)t.join();throw Error(3,"CPU-Worker konnten nicht gestartet werden");}
     auto last=Clock::now();
+    log.progress(phase,0,cases.size(),"Beginn Betriebspunktgruppe | Teil: 0/"+std::to_string(cases.size()));
     while(finished<cases.size()&&!failed&&!cancelled) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         if(Clock::now()-last>=std::chrono::seconds(1)) {
             auto n=finished.load();
-            log.log(phase,"Form eingabe, Raster/Betriebspunktgruppe | Teil: "+std::to_string(n)+"/"+std::to_string(cases.size())+
+            log.progress(phase,n,cases.size(),"Form eingabe, Raster/Betriebspunktgruppe | Teil: "+std::to_string(n)+"/"+std::to_string(cases.size())+
                 " ("+std::to_string(100*n/cases.size())+" %) | Gesamt: "+std::to_string(90*(done+n)/total)+
                 " % | Phasen: "+std::to_string(phase_no)+"/6");
             last=Clock::now();
@@ -321,7 +385,7 @@ std::vector<R> batch(const std::vector<Case>& cases,const Input& input,const Log
     ensure(!cancelled,130,"Benutzerabbruch: eigene Worker beendet");
     ensure(!failed,errorcode,"Berechnung: "+error);
     done+=cases.size();
-    log.log(phase,"Abgeschlossen | Teil: "+std::to_string(cases.size())+"/"+std::to_string(cases.size())+
+    log.progress(phase,cases.size(),cases.size(),"Abgeschlossen | Teil: "+std::to_string(cases.size())+"/"+std::to_string(cases.size())+
         " (100 %) | Gesamt: "+std::to_string(90*done/total)+" % | Phasen: "+std::to_string(phase_no)+"/6");
     return results;
 }
@@ -523,7 +587,9 @@ J run(const fs::path& path,bool check,int limit) {
         const std::string profileheader="profil_id,alpha_deg,re,CL,CD,CM,qualitaet";
         sums<<sumheader<<'\n';forces<<forceheader<<'\n';profiles<<profileheader<<'\n';
         auto components=[](std::ostream& out,const J& arr){for(const auto& x:arr)out<<','<<x.get<double>();};
+        const size_t export_total=count+grid.at("grids").at("4").size()+1;
         size_t exported=0;auto last=Clock::now();
+        log.progress("Export",0,export_total,"Beginn Tabellenexport | Teil: 0/"+std::to_string(export_total));
         for(double a:lookup_angles)for(double b:lookup_elevations)for(double re:input.res) {
             ensure(!cancelled,130,"Benutzerabbruch beim Export");
             J r=J::parse(input.context->solve(a,b,re,4,true));
@@ -537,7 +603,7 @@ J run(const fs::path& path,bool check,int limit) {
             }
             ++exported;
             if(Clock::now()-last>=std::chrono::seconds(1)) {
-                log.log("Export","Teil: "+std::to_string(exported)+"/"+std::to_string(count)+
+                log.progress("Export",exported,export_total,"Teil: "+std::to_string(exported)+"/"+std::to_string(export_total)+
                     " | Gesamt: "+std::to_string(90+8*exported/count)+" % | Phasen: 5/6");last=Clock::now();
             }
         }
@@ -581,7 +647,7 @@ J run(const fs::path& path,bool check,int limit) {
                 queries.push_back({coefficients.at("a0").get<double>(),coefficients.at("A1").get<double>(),
                         coefficients.at("A2").get<double>(),a,localre});
                 if(Clock::now()-last>=std::chrono::seconds(1)) {
-                    log.log("Export","Profilpolaren schreiben | Gesamt: 99 % | Phasen: 5/6");last=Clock::now();
+                    log.progress("Export",exported,export_total,"Profilpolaren schreiben | Gesamt: 99 % | Phasen: 5/6");last=Clock::now();
                 }
             }
             std::vector<PolarBatchOutput> values;
@@ -624,7 +690,13 @@ J run(const fs::path& path,bool check,int limit) {
                 profiles<<row.at("profil_id").get<std::string>()<<','<<a<<','<<localre<<','<<value.cl<<','
                         <<value.cd<<','<<value.cm<<','<<quality<<'\n';
             }
+            ++exported;
+            if(Clock::now()-last>=std::chrono::seconds(1)) {
+                log.progress("Export",exported,export_total,"Profilgruppe geschrieben | Gesamt: 99 % | Phasen: 5/6");
+                last=Clock::now();
+            }
         }
+        log.progress("Export",export_total-1,export_total,"Tabellen geschrieben | Gesamt: 99 % | Phasen: 5/6");
         sums.close();forces.close();profiles.close();
         J inputhash={{"auftrag",hash(input.path)},{"geometrie",hash(input.geometrypath)},{"konventionen",hash(input.conventionpath)}};
         ensure(inputhash==input.original_hashes,2,"Eingabedatei waehrend der Berechnung geaendert");
