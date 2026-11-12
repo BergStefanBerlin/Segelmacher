@@ -2,6 +2,10 @@
 
 Stand: 05.11.2026 - Version 1.0
 
+**Formatentscheidung vom 12.11.2026:** Ergebnistabellen werden ausschliesslich
+als Apache Parquet mit Zstandard-Kompression und binary64-Werten bereitgestellt.
+Es gibt weder CSV- noch ein eigenes Binaerformat als Tabellenalternative.
+
 Dieses Paket enthaelt alles, was fuer die Umsetzung der Segelkraefte-Simulation
 erarbeitet wurde: die verifizierten Klassenmasse, die vollstaendige
 Arbeitsanweisung fuer GitHub Copilot und die Originalvorschriften als Belege.
@@ -75,10 +79,10 @@ Spanne 0,20-1,54 Mio. Die sechs Stufen in der YAML
 
 | Thema | Entscheidung |
 |---|---|
-| Formate | CSV + Binaer (float32) |
-| Praezision | float32 binaer, CSV mit 6 Nachkommastellen |
+| Formate | Ausschliesslich Apache Parquet mit Zstandard |
+| Praezision | binary64 fuer Mess- und Rechenwerte; passende Integer-/Boolean-Typen fuer Indizes und Kennzeichen |
 | ZIP-Aufbau | /data, /docs, /plots, /examples |
-| Naming | <segel>_v01.zip, Version im Header |
+| Naming | <segel>_v01.zip, Formatversion in `manifest.json` |
 | Winkelaufloesung | 1 Grad durchgehend, 361 Punkte |
 | Reynoldsstufen | 6, log-verteilt |
 | Trimm-Matrix | 4 Camber x 4 Twist x 2 Draft = 32 Faelle |
@@ -93,7 +97,7 @@ Spanne 0,20-1,54 Mio. Die sechs Stufen in der YAML
 | Winkeldefinition | -180..+180 Grad gegen lokale Sehne, 0 = Wind vom Vorliek |
 | Geschwindigkeit | scheinbarer Wind |
 | Qualitaet | Spalte `quality` je Zeile |
-| Layout | Long Format + Pivot-CSV |
+| Layout | Long-Format-Parquet + zusaetzliche Pivot-Parquet-Tabelle |
 | README | Deutsch und Englisch |
 | Code | Python-Leser + Beispiel-Lookup |
 
@@ -102,7 +106,8 @@ Spanne 0,20-1,54 Mio. Die sechs Stufen in der YAML
 y ist BACKBORD positiv. Das ist ungewoehnlich - die meisten Programme
 nutzen steuerbord positiv. Das System ist rechtshaendig (x mal y = z), aber
 wer die Tabelle ungeprueft uebernimmt, dreht alle Querkraefte um.
-Die Konvention steht deshalb zusaetzlich als Kommentarzeile in jeder CSV.
+Die Konvention steht deshalb zusaetzlich in `manifest.json` und den
+Parquet-Schemametadaten.
 
 ---
 
@@ -144,6 +149,8 @@ die Auswertung fortschleppen.
 
 Die sechs grossen CSV-Dateien des Testlaufs (je ~7 MB) wurden aus diesem
 Paket entfernt - sie sind falsch und wuerden das Paket unnoetig aufblaehen.
+Auch die aktuelle Paketspezifikation erzeugt keine CSV- oder eigenen
+Binaertabellen; Tabellenprodukte liegen ausschliesslich als Parquet vor.
 
 ---
 

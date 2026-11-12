@@ -2,6 +2,10 @@
 #include "segel/core.hpp"
 #include "opencl_backend.hpp"
 #include "progress.hpp"
+#include <arrow/api.h>
+#include <arrow/io/api.h>
+#include <parquet/arrow/writer.h>
+#include <parquet/properties.h>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -116,6 +120,124 @@ double numeric(const J& j,const std::string& key) {
 void write(const fs::path& path,const J& value) {
     std::ofstream out(path,std::ios::binary);out.exceptions(std::ios::badbit|std::ios::failbit);
     out<<value.dump(2)<<'\n';out.close();
+}
+constexpr int64_t parquet_row_group_rows=16384;
+class ParquetTableWriter {
+public:
+    ParquetTableWriter(const fs::path& path,std::shared_ptr<arrow::Schema> schema)
+        :schema_(std::move(schema)) {
+        auto output=arrow::io::FileOutputStream::Open(path.u8string());
+        ensure(output.ok(),5,"Parquet-Datei kann nicht geoeffnet werden: "+path.u8string()+": "+output.status().ToString());
+        sink_=*output;
+        auto properties=parquet::WriterProperties::Builder()
+            .compression(parquet::Compression::ZSTD)
+            ->max_row_group_length(parquet_row_group_rows)
+            ->build();
+        auto arrow_properties=parquet::ArrowWriterProperties::Builder().store_schema()->build();
+        auto maybe_writer=parquet::arrow::FileWriter::Open(*schema_,arrow::default_memory_pool(),sink_,
+            properties,arrow_properties);
+        ensure(maybe_writer.ok(),5,"Parquet-Writer kann nicht gestartet werden: "+maybe_writer.status().ToString());
+        writer_=std::move(maybe_writer).ValueOrDie();
+        for(const auto& field:schema_->fields()) {
+            std::unique_ptr<arrow::ArrayBuilder> builder;
+            auto status=arrow::MakeBuilder(arrow::default_memory_pool(),field->type(),&builder);
+            ensure(status.ok(),5,"Parquet-Spaltenpuffer kann nicht angelegt werden: "+status.ToString());
+            builders_.push_back(std::move(builder));
+        }
+    }
+
+    void append(std::vector<std::shared_ptr<arrow::Scalar>> values) {
+        ensure(values.size()==builders_.size(),5,"Interner Parquet-Zeilenschemafehler");
+        for(size_t i=0;i<values.size();++i) {
+            auto status=builders_[i]->AppendScalar(*values[i]);
+            ensure(status.ok(),5,"Parquet-Zeile kann nicht gepuffert werden: "+status.ToString());
+        }
+        ++pending_rows_;
+        ++row_count_;
+        if(pending_rows_==parquet_row_group_rows)flush();
+    }
+
+    void close() {
+        flush();
+        auto status=writer_->Close();
+        ensure(status.ok(),5,"Parquet-Datei kann nicht abgeschlossen werden: "+status.ToString());
+        writer_.reset();
+        status=sink_->Close();
+        ensure(status.ok(),5,"Parquet-Datei kann nicht geschlossen werden: "+status.ToString());
+    }
+
+    int64_t row_count() const { return row_count_; }
+    int64_t row_group_count() const { return row_group_count_; }
+
+private:
+    void flush() {
+        if(!pending_rows_)return;
+        std::vector<std::shared_ptr<arrow::Array>> arrays;
+        arrays.reserve(builders_.size());
+        for(auto& builder:builders_) {
+            std::shared_ptr<arrow::Array> array;
+            auto status=builder->Finish(&array);
+            ensure(status.ok(),5,"Parquet-Spaltenpuffer kann nicht abgeschlossen werden: "+status.ToString());
+            arrays.push_back(std::move(array));
+        }
+        auto table=arrow::Table::Make(schema_,std::move(arrays));
+        auto status=writer_->WriteTable(*table,pending_rows_);
+        ensure(status.ok(),5,"Parquet-Row-Group kann nicht geschrieben werden: "+status.ToString());
+        ++row_group_count_;
+        pending_rows_=0;
+    }
+
+    std::shared_ptr<arrow::Schema> schema_;
+    std::shared_ptr<arrow::io::FileOutputStream> sink_;
+    std::unique_ptr<parquet::arrow::FileWriter> writer_;
+    std::vector<std::unique_ptr<arrow::ArrayBuilder>> builders_;
+    int64_t pending_rows_=0,row_count_=0,row_group_count_=0;
+};
+std::shared_ptr<arrow::Schema> sums_schema() {
+    return arrow::schema({
+        arrow::field("form_id",arrow::utf8(),false),arrow::field("alpha_deg",arrow::float64(),false),
+        arrow::field("windneigung_deg",arrow::float64(),false),arrow::field("re_ref",arrow::float64(),false),
+        arrow::field("CFx",arrow::float64(),false),arrow::field("CFy",arrow::float64(),false),
+        arrow::field("CFz",arrow::float64(),false),arrow::field("CMx",arrow::float64(),false),
+        arrow::field("CMy",arrow::float64(),false),arrow::field("CMz",arrow::float64(),false),
+        arrow::field("angriff_x_m",arrow::float64()),arrow::field("angriff_y_m",arrow::float64()),
+        arrow::field("angriff_z_m",arrow::float64()),arrow::field("angriff_gueltig",arrow::boolean(),false),
+        arrow::field("CM_rest_x",arrow::float64(),false),arrow::field("CM_rest_y",arrow::float64(),false),
+        arrow::field("CM_rest_z",arrow::float64(),false),arrow::field("qualitaet",arrow::utf8(),false)});
+}
+std::shared_ptr<arrow::Schema> forces_schema() {
+    return arrow::schema({
+        arrow::field("form_id",arrow::utf8(),false),arrow::field("alpha_deg",arrow::float64(),false),
+        arrow::field("windneigung_deg",arrow::float64(),false),arrow::field("re_ref",arrow::float64(),false),
+        arrow::field("beitrag_id",arrow::int64(),false),arrow::field("CFx",arrow::float64(),false),
+        arrow::field("CFy",arrow::float64(),false),arrow::field("CFz",arrow::float64(),false),
+        arrow::field("ansatz_x_m",arrow::float64(),false),arrow::field("ansatz_y_m",arrow::float64(),false),
+        arrow::field("ansatz_z_m",arrow::float64(),false),arrow::field("CM_eigen_x",arrow::float64(),false),
+        arrow::field("CM_eigen_y",arrow::float64(),false),arrow::field("CM_eigen_z",arrow::float64(),false),
+        arrow::field("qualitaet",arrow::utf8(),false)});
+}
+std::shared_ptr<arrow::Schema> profiles_schema() {
+    return arrow::schema({
+        arrow::field("profil_id",arrow::utf8(),false),arrow::field("alpha_deg",arrow::float64(),false),
+        arrow::field("re",arrow::float64(),false),arrow::field("CL",arrow::float64(),false),
+        arrow::field("CD",arrow::float64(),false),arrow::field("CM",arrow::float64(),false),
+        arrow::field("qualitaet",arrow::utf8(),false)});
+}
+std::shared_ptr<arrow::Scalar> text_scalar(const std::string& value) {
+    return std::make_shared<arrow::StringScalar>(value);
+}
+std::shared_ptr<arrow::Scalar> number_scalar(double value) {
+    ensure(std::isfinite(value),4,"Parquet-Ausgabe enthaelt einen nicht-endlichen Zahlenwert");
+    return std::make_shared<arrow::DoubleScalar>(value);
+}
+std::shared_ptr<arrow::Scalar> integer_scalar(int64_t value) {
+    return std::make_shared<arrow::Int64Scalar>(value);
+}
+std::shared_ptr<arrow::Scalar> boolean_scalar(bool value) {
+    return std::make_shared<arrow::BooleanScalar>(value);
+}
+std::shared_ptr<arrow::Scalar> null_number_scalar() {
+    return std::make_shared<arrow::DoubleScalar>();
 }
 unsigned processors() {
     unsigned n=std::max(1u,std::thread::hardware_concurrency());
@@ -579,27 +701,32 @@ J run(const fs::path& path,bool check,int limit) {
             " Providervergleiche; Toleranzen bleiben unveraendert");
         log.log("Qualitaetspruefung","Abgeschlossen | Phasen: 5/6");
         log.log("Export","Beginn: sechs Produkte und SHA256");
-        std::ofstream sums(stage/"summen.csv",std::ios::binary),forces(stage/"kraefte.csv",std::ios::binary),
-                      profiles(stage/"profile.csv",std::ios::binary);
-        for(auto s:{&sums,&forces,&profiles}) {s->exceptions(std::ios::badbit|std::ios::failbit);*s<<std::setprecision(17);}
-        const std::string sumheader="form_id,alpha_deg,windneigung_deg,re_ref,CFx,CFy,CFz,CMx,CMy,CMz,angriff_x_m,angriff_y_m,angriff_z_m,angriff_gueltig,CM_rest_x,CM_rest_y,CM_rest_z,qualitaet";
-        const std::string forceheader="form_id,alpha_deg,windneigung_deg,re_ref,beitrag_id,CFx,CFy,CFz,ansatz_x_m,ansatz_y_m,ansatz_z_m,CM_eigen_x,CM_eigen_y,CM_eigen_z,qualitaet";
-        const std::string profileheader="profil_id,alpha_deg,re,CL,CD,CM,qualitaet";
-        sums<<sumheader<<'\n';forces<<forceheader<<'\n';profiles<<profileheader<<'\n';
-        auto components=[](std::ostream& out,const J& arr){for(const auto& x:arr)out<<','<<x.get<double>();};
+        ParquetTableWriter sums(stage/"summen.parquet",sums_schema());
+        ParquetTableWriter forces(stage/"kraefte.parquet",forces_schema());
+        ParquetTableWriter profiles(stage/"profile.parquet",profiles_schema());
+        auto component=[](const J& arr,size_t i){return number_scalar(arr.at(i).get<double>());};
+        auto nullable_component=[](const J& arr,size_t i,bool valid) {
+            return valid?number_scalar(arr.at(i).get<double>()):null_number_scalar();
+        };
         const size_t export_total=count+grid.at("grids").at("4").size()+1;
         size_t exported=0;auto last=Clock::now();
         log.progress("Export",0,export_total,"Beginn Tabellenexport | Teil: 0/"+std::to_string(export_total));
         for(double a:lookup_angles)for(double b:lookup_elevations)for(double re:input.res) {
             ensure(!cancelled,130,"Benutzerabbruch beim Export");
             J r=J::parse(input.context->solve(a,b,re,4,true));
-            sums<<"eingabe,"<<a<<','<<b<<','<<re;
-            components(sums,r.at("CF"));components(sums,r.at("CM"));
-            if(r.at("valid").get<bool>())components(sums,r.at("point"));else sums<<",,,";
-            sums<<','<<(r.at("valid").get<bool>()?1:0);components(sums,r.at("rest"));sums<<','<<quality<<'\n';
+            const bool point_valid=r.at("valid").get<bool>();
+            sums.append({text_scalar("eingabe"),number_scalar(a),number_scalar(b),number_scalar(re),
+                component(r.at("CF"),0),component(r.at("CF"),1),component(r.at("CF"),2),
+                component(r.at("CM"),0),component(r.at("CM"),1),component(r.at("CM"),2),
+                nullable_component(r.at("point"),0,point_valid),nullable_component(r.at("point"),1,point_valid),
+                nullable_component(r.at("point"),2,point_valid),boolean_scalar(point_valid),
+                component(r.at("rest"),0),component(r.at("rest"),1),component(r.at("rest"),2),text_scalar(quality)});
             for(const auto& l:r.at("loads")) {
-                forces<<"eingabe,"<<a<<','<<b<<','<<re<<','<<l.at("id").get<int>();
-                components(forces,l.at("f"));components(forces,l.at("r"));components(forces,l.at("m"));forces<<','<<quality<<'\n';
+                forces.append({text_scalar("eingabe"),number_scalar(a),number_scalar(b),number_scalar(re),
+                    integer_scalar(l.at("id").get<int64_t>()),component(l.at("f"),0),component(l.at("f"),1),
+                    component(l.at("f"),2),component(l.at("r"),0),component(l.at("r"),1),
+                    component(l.at("r"),2),component(l.at("m"),0),component(l.at("m"),1),
+                    component(l.at("m"),2),text_scalar(quality)});
             }
             ++exported;
             if(Clock::now()-last>=std::chrono::seconds(1)) {
@@ -687,8 +814,9 @@ J run(const fs::path& path,bool check,int limit) {
                 const auto& value=values[index++];
                 ensure(std::isfinite(value.cl)&&std::isfinite(value.cd)&&std::isfinite(value.cm),4,
                     "Profilpolar-Backend lieferte nicht-endliche Werte");
-                profiles<<row.at("profil_id").get<std::string>()<<','<<a<<','<<localre<<','<<value.cl<<','
-                        <<value.cd<<','<<value.cm<<','<<quality<<'\n';
+                profiles.append({text_scalar(row.at("profil_id").get<std::string>()),number_scalar(a),
+                    number_scalar(localre),number_scalar(value.cl),number_scalar(value.cd),
+                    number_scalar(value.cm),text_scalar(quality)});
             }
             ++exported;
             if(Clock::now()-last>=std::chrono::seconds(1)) {
@@ -720,14 +848,17 @@ J run(const fs::path& path,bool check,int limit) {
         report["dauer_s"]=std::chrono::duration<double>(Clock::now()-log.start).count();
         write(stage/"pruefbericht.json",report);
         J hashes;
-        for(const auto& name:{"summen.csv","kraefte.csv","profile.csv","pruefbericht.json","auftrag_ausgefuehrt.json"})hashes[name]=hash(stage/name);
-        write(stage/"lookup.json",{{"formatversion","1"},{"status","erfolgreich"},{"qualitaet",quality},{"modellstand",model},
+        for(const auto& name:{"summen.parquet","kraefte.parquet","profile.parquet","pruefbericht.json","auftrag_ausgefuehrt.json"})hashes[name]=hash(stage/name);
+        write(stage/"lookup.json",{{"formatversion","2"},{"status","erfolgreich"},{"qualitaet",quality},{"modellstand",model},
             {"parameter",input.parameters},{"segel_id",grid.at("segel_id")},{"geometrieschema","0.1"},{"geometrie",grid},
             {"konventionen",input.conv},{"formvarianten",input.job.at("formvarianten")},{"betriebspunkte",input.job.at("betriebspunkte")},
             {"interpolation",{{"verfahren","periodische_tensorprodukt_cubic_hermite"},
                 {"stuetzstellen",report.at("interpolation_stuetzstellen")}}},
-            {"summenzeilen",count},{"csv",{{"praezision",17},{"encoding","UTF-8"},{"trenner",","},{"summen.csv",sumheader},
-                {"kraefte.csv",forceheader},{"profile.csv",profileheader},
+            {"summenzeilen",count},{"parquet",{{"bibliothek","Apache Arrow"},{"bibliotheksversion","21.0.0"},
+                {"schema_version","1"},{"kompression","ZSTD"},{"row_group_max_zeilen",parquet_row_group_rows},
+                {"tabellen",{{"summen.parquet",{{"zeilen",sums.row_count()},{"row_groups",sums.row_group_count()},{"schema",sums_schema()->ToString()}}},
+                    {"kraefte.parquet",{{"zeilen",forces.row_count()},{"row_groups",forces.row_group_count()},{"schema",forces_schema()->ToString()}}},
+                    {"profile.parquet",{{"zeilen",profiles.row_count()},{"row_groups",profiles.row_group_count()},{"schema",profiles_schema()->ToString()}}}}},
                 {"einheiten",{{"alpha_deg","deg"},{"windneigung_deg","deg"},{"re_ref","1"},{"re","1"},
                     {"CF_und_CM","1"},{"CL_CD_CM_profil","1"},{"angriff_und_ansatz","m"},{"IDs_Qualitaet","Text"}}}}},
             {"bezuege",{{"S_m2",grid.at("S_m2")},{"c_ref_m",grid.at("c_ref_m")},{"kraftschwelle",1e-10},{"momentenursprung","hals"}}},

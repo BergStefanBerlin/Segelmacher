@@ -1,9 +1,10 @@
 # Umsetzungsplan: Lookup-Generator
 
-Stand: 06.11.2026
+Stand: 12.11.2026
 
-Status: **CPU-/GPU-Implementierung und strenger numerischer Vollrasterlauf
-mit 0.0005/0.01 bestanden; physikalische Validierung und Nutzerabnahme offen.**
+Status: **Parquet/Zstandard-Umstellung umgesetzt; Release-Build und CTest
+3/3 sowie separater Core-Build/CTest 1/1 bestanden. Leistungsmessung an einer
+realen grossen Lookup-Kopie und physikalische Validierung bleiben offen.**
 
 ## 0. Verbindlicher Umsetzungsstand Lookup-H1
 
@@ -25,14 +26,15 @@ mit zusaetzlichen Neigungen entstehen 49680 Ausgabe-Betriebspunkte.
 OpenCL auf AMD gfx1103: 1308960 Polarwerte, 3926880 CPU/GPU-Komponentenvergleiche,
 maximale Abweichung 4.440892098500626e-16, ohne Speedbenchmark.
 Die physikalische Validierung gegen reale Segel bleibt offen.
-Der komplette strenge Integrationstest endete ebenfalls mit Exitcode 0:
-CSV-Pruefungen, Einzelkraft-/Momentensummation, zentrale Wirkungslinie,
+Der komplette strenge CSV-Integrationstest des damaligen Ausgabeformats
+endete ebenfalls mit Exitcode 0: CSV-Pruefungen,
+Einzelkraft-/Momentensummation, zentrale Wirkungslinie,
 Polidentitaet, Hashes und Schutz vor erneutem Ueberschreiben bestanden.
 Die spaeteren historischen Tabellenstaende zu fehlender GPU und gescheiterter
 Numerik sind durch diesen neuen Nachweis ueberholt, nicht nachtraeglich
 als damals erfolgreich umzudeuten.
-Integrationstest-Zeitlimit auf 1800 Sekunden erweitert: der vollstaendige
-CSV-Export benoetigt mehrere Minuten; 180 Sekunden brachen den Test vor
+Integrationstest-Zeitlimit auf 1800 Sekunden erweitert: der damalige
+vollstaendige CSV-Export benoetigte mehrere Minuten; 180 Sekunden brachen den Test vor
 der Ergebnispruefung ab. Keine numerischen Toleranzen dadurch geaendert.
 
 Abschliessende native Tests nach der Toleranzumstellung: Gesamt-CTest
@@ -61,8 +63,8 @@ Technische Umsetzung, Integration, Numerik und fachliche Abnahme sind getrennt.
 | U-S-000008 Logging/CLI | A-S-00002, A-S-00003 | U-S-000002 | Zentrale stderr-Instanz, zeilenweise terminaltaugliche Anzeige auch bei Umleitung, Zeitstempel/Phasen/Fortschritt/Lebenszeichen; ein Abschluss-JSON. Automatisierter Umleitungsnachweis, interaktive TTY-Abnahme offen. |
 | U-S-000009 Numerische Pruefung | A-S-00018, A-S-00019 | U-S-000006 | Raster 1/2/4, Fourier-Referenz und Traglinienmoden 12/16, direkte Winkel-/Zellenzwischenpunkte, Naht/Pol/Stetigkeit; Fehler sperrt Publikation. Strenges Startraster muss separat bestanden werden, gelockerter Workflowtest ist kein Ersatz. |
 | U-S-000010 GPU | A-S-00017 | U-S-000006, U-S-000007 | **Teilweise/offen:** Modus-/Faehigkeitsablehnung und CPU-Auswahl ohne Speedbenchmarks vorhanden. Kein implementierter GPU-Rechenbackend, keine Geraete-/Speicher-/Fehler-/CPU-GPU-Korrektheitspruefung. Nicht als fertig abgenommen. |
-| U-S-000011 Export/Publikation | A-S-00020 bis A-S-00023, A-S-00030 | U-S-000009, U-S-000007 | Sechs Produkte, 17-stellige CSV, Snapshots/Hashes, Sperre und atomare Ordnerumbenennung, Diagnose. CPU-Integration vorhanden; GPU-Integration blockiert durch U-S-000010. Schreib-/OOM-/harte Prozessabsturzfaelle nicht umfassend nachgewiesen. |
-| U-S-000012 Integration/Abgleich | A-S-00001 bis A-S-00030 | U-S-000008, U-S-000011 | Isolierte 420-Tests, Schutz-/CSV-/Momenten-/Hash-/Pol-/CPU-Tests. Verbleibende fachliche, strenge numerische und GPU-Abnahmen bleiben ausdruecklich offen. |
+| U-S-000011 Export/Publikation | A-S-00020 bis A-S-00023, A-S-00030 | U-S-000009, U-S-000007 | Historischer CSV-Stand: sechs Produkte, Tabellen, Snapshots/Hashes, Sperre und atomare Ordnerumbenennung. CSV-Ausgabe ist durch die am 12.11.2026 freigegebenen A-S-00031 bis A-S-00036 ersetzt; Folgearbeiten U-S-000013 bis U-S-000016. |
+| U-S-000012 Integration/Abgleich | A-S-00001 bis A-S-00030 | U-S-000008, U-S-000011 | Historische isolierte 420-Tests einschliesslich CSV-/Momenten-/Hash-/Pol-/CPU-Pruefungen. Tabellenpruefungen muessen gemaess neuem Parquet-Vertrag erneuert werden. Verbleibende fachliche, strenge numerische und GPU-Abnahmen bleiben ausdruecklich offen. |
 
 ### Nachweisbewertung
 
@@ -248,7 +250,7 @@ stehen in Abschnitt 0; die Spalte Grundlage verweist auf Spezifikationsabschnitt
 | Terminal-Logging | Zentrale Textausgabe, Teil-/Gesamtfortschritt, TTY-/Umleitungsmodus, Lebenszeichen und Fehlerabschluss | Projektgeruest | 3.3, 3.4 |
 | Qualitaetspruefung | Raster 1/2/4, Zwischenazimute/zyklische Naht, Zwischenneigungen und Winkelzellen, Polstetigkeit, Toleranzen, Modellplausibilitaet | Gesamtsegelintegration | 4.3, 7 |
 | GPU-Rechenpfad | Gebuendelte geeignete Profil-/Streifenrechnungen; Geraete-/Speicherpruefung, CPU-Vergleich, keine Speedpruefung | Gesamtsegelintegration, CPU-Scheduler | 6.2 |
-| Ergebnisexport | Metadaten, CSV, Berichte, Eingabesnapshots, Pruefsummen; gesperrte Zwischenablage und sichere Veroeffentlichung | Qualitaetspruefung, CPU-Scheduler, GPU-Rechenpfad | 8 |
+| Ergebnisexport | Metadaten, Parquet-Tabellen mit Zstandard, Berichte, Eingabesnapshots, Pruefsummen; gesperrte Zwischenablage und sichere Veroeffentlichung | Qualitaetspruefung, CPU-Scheduler, GPU-Rechenpfad | 8, 11 |
 | Durchgaengige CLI | `pruefen`/`lookup`, Exitcodes, ein Abschluss-JSON, Ressourcen und Logging mit allen Rechenphasen verbinden | Ergebnisexport, Terminal-Logging | 3, 6, 8 |
 | Abnahme und Dokumentation | Isolierter 420-Main-Lauf, Fehler-/Ressourcentests, CLI-/Ergebnisbeispiele, Belege und Restpunkte | Durchgaengige CLI | 9, 10 |
 
@@ -322,7 +324,7 @@ oder Simulationen werden nicht als GPU-Nachweis ausgegeben.
 Eintritt: Numerik, Ressourcen und Export sind integriert.
 
 - Ein bereiter Testauftrag erzeugt alle sechs vorgesehenen Dateien in `LookUp`,
-  einschliesslich `kraefte.csv` mit raeumlich positionierten Einzelbeitraegen.
+  einschliesslich `kraefte.parquet` mit raeumlich positionierten Einzelbeitraegen.
 - Summation der Einzelkraefte einschliesslich Hebelarm- und Eigenmomenten
   reproduziert die Gesamtsegel-Kraft und das Moment um den Hals.
 - Raster- und Winkelpruefung bestehen; exportiert wird das feinste gepruefte Raster.
@@ -416,3 +418,53 @@ Die vorhandenen Segelgeometrien werden wiederverwendet, Einzel-Lookups
 bleiben gueltige Ergebnisse ihrer unabhaengigen Modelle. Gekoppelte
 Ergebnisse entstehen durch neue Rechnungen, nicht durch nachtraegliches
 Umetikettieren oder einen pauschalen Korrekturfaktor.
+
+## 8. Umsetzung: Parquet-Ausgabe ohne CSV
+
+Status: **Am 12.11.2026 durch den Nutzer zur Umsetzung beauftragt.**
+Verbindlich ist Abschnitt 11 der
+[Spezifikation](../Spezifikationen/Spezifikation_Lookup_Generator.md#11-kompaktes-parquet-ausgabeformat)
+und die
+[Entwurfspunkte](../Spezifikationen/Entwurfspunkte/Lookup_Generator.md#erweiterung-kompaktes-lookup-format-06112026).
+Stand: 12.11.2026.
+
+### 8.1 Umsetzungsschritte
+
+| Schritt | Anforderungen | Abhaengigkeiten | Geplanter Nachweis / Status |
+|---|---|---|---|
+| U-S-000013 Arrow-Abhaengigkeit und C++-Prototyp | A-S-00031, A-S-00033, A-S-00034 | U-S-000011 | Apache Arrow/Parquet 21.0.0 (C++17) mit Parquet- und Zstandard-Support reproduzierbar ueber vcpkg eingebunden. C++-Writer/Reader pruefen Schema, Row Groups und selektive Spaltenlesung. **Implementiert und gebaut.** |
+| U-S-000014 Streaming-Tabellenausgabe | A-S-00031, A-S-00032, A-S-00034 | U-S-000013 | Genau `summen.parquet`, `kraefte.parquet`, `profile.parquet`; Binary64, festgelegte Feldtypen, deterministische Schluesselreihenfolge und begrenzte Row-Group-Puffer. Keine CSV-Ausgabe. **Implementiert; Integrationstest bestanden.** |
+| U-S-000015 Manifest, Integritaet und Veroeffentlichung | A-S-00031, A-S-00033, A-S-00036 | U-S-000014 | Genau sechs Ergebnisdateien, Schema-/Codec-/Bibliotheksversion, Einheiten, Achsen, SHA-256, Abbruch-/Schreibfehler und atomare Publikation. Keine Migration bestehender CSV-Lookups. **Implementiert; Integrationstest bestanden.** |
+| U-S-000016 Parquet-Integration und Abnahme | A-S-00032, A-S-00034 bis A-S-00036 | U-S-000014, U-S-000015 | Unabhaengiger Parquet-Leser prueft Schema, Zstandard, Roundtrip, Summen-/Momentenparitaet, Row-Group-Zugriffe, Worker-Reproduzierbarkeit und Fehlerfaelle. **Release-Build und Gesamt-CTest 3/3 bestanden; separate Core-CTest 1/1 bestanden.** Leistungsmessung an einer realen grossen Kopie mit Dateigroesse, Erzeugung, Vollscan, gezielten kalten/warmen Abfragen, p95 und Spitzen-RAM bleibt offen. |
+
+### 8.2 Abgrenzung
+
+- Summen- und Einzelkrafttabellen bleiben getrennt; Einzelkraefte sind
+  vollstaendig fuer Detailauswertung verfuegbar und werden nicht zusaetzlich
+  zu ihrer Summe bilanziert.
+- Selektive Zugriffe umfassen Interpolationsnachbarn, Winkelnaht und Polfall.
+  Negative Windneigungen werden nicht gespiegelt oder begrenzt.
+- Das Lookup bildet keine Grosssegel-/Fock-Wechselwirkung ab und spezifiziert
+  keine allgemeine meteorologische Windfelddatei.
+- Bestehende CSV-Ergebnisse werden nicht ueberschrieben oder migriert.
+  CSV-Import, CSV-Export und CSV-Konfigurationsoptionen sind nicht Teil des
+  neuen Ergebnisvertrags.
+- Die CORE-Windsimulations-/Kraftblockbewertung ist ein separater
+  Konsumentenauftrag; dieser Plan aendert keine Dateien und keine oeffentliche
+  Schnittstelle im Core.
+
+### 8.3 Implementierungs- und Testnachweis
+
+- Arrow/Parquet 21.0.0 wurde ueber den festgelegten vcpkg-Baseline-Stand
+  eingebunden. Der Release-Build mit MSVC 19.44 war erfolgreich.
+- `ctest --test-dir build-parquet -C Release --output-on-failure`:
+  **3/3 bestanden**, einschliesslich Parquet-/CLI-Integrationstest
+  (31.17 s Gesamtlaufzeit).
+- Der eigenstaendige Core wurde ohne GUI in
+  `build-parquet/core-standalone` gebaut und getestet:
+  **1/1 bestanden**. Das vorhandene `build-core`-CMake-Cache-Verzeichnis
+  verweist auf einen anderen Quellpfad und wurde deshalb nicht ueberschrieben.
+- Die Messung an einer realen grossen Lookup-Kopie ist nicht erfolgt.
+  Es werden daher keine quantitativen Groessen- oder Latenzvorteile behauptet.
+- Physikalische Validierung gegen reale Segelreferenzen bleibt unabhaengig
+  davon offen; Parquet aendert weder Rechenmodell noch Core-Vertrag.

@@ -25,13 +25,17 @@
 > - 420 Grosssegel: 6.34 m² → **7.78 m²** (Dreiecksannahme war falsch)
 > - Folkeboot Grosssegel: Vorliek 8.22 m → **8.75 m**, Unterliek 2.90 m → **3.30 m**
 > - Folkeboot Fock: 6.97 m² bleibt bestaetigt (6.99 m²)
+>
+> **Formatentscheidung vom 12.11.2026:** Ergebnistabellen werden ausschliesslich
+> als Apache Parquet mit Zstandard und binary64-Werten geschrieben. CSV und
+> ein eigenes Tabellen-Binaerformat sind keine Ausgabealternativen.
 
 
 **Ziel dieses Dokuments:** Vollstaendige, in einem Rutsch abarbeitbare Spezifikation fuer einen Coding-Agenten (GitHub Copilot / Claude Code / Cursor). Keine Rueckfragen an den Auftraggeber noetig, ausser an den mit `TODO_HUMAN` markierten Stellen.
 
 **Version:** 1.0
 **Sprache im Code:** Englisch (Identifier, Docstrings). **Sprache der Dokumentation:** Deutsch und Englisch.
-**Zielumgebung:** Python 3.11+, keine Netzwerkabhaengigkeiten zur Laufzeit, keine Cloud-Dienste.
+**Zielumgebung:** Python 3.11+ mit PyArrow, keine Netzwerkabhaengigkeiten zur Laufzeit, keine Cloud-Dienste.
 
 ---
 
@@ -68,16 +72,16 @@ Diese Tabelle ist das Ergebnis einer abgeschlossenen Abstimmung. Sie ist **nicht
 
 | Nr. | Thema | Entscheidung |
 |---|---|---|
-| Q1 | Dateiformate | CSV **und** Binaer (float32) |
-| Q2 | Praezision | Binaer float32; CSV mit 6 Nachkommastellen |
+| Q1 | Dateiformate | Ausschliesslich Apache Parquet mit Zstandard |
+| Q2 | Praezision | binary64 fuer Mess- und Rechenwerte; Integer-/Boolean-Typen fuer Indizes und Kennzeichen |
 | Q3 | ZIP-Struktur | Ordner `/data`, `/docs`, `/plots`, `/examples` |
-| Q4 | Namensschema | `<boot>_<segel>_v01.zip`; Version zusaetzlich im Binaer-Header |
+| Q4 | Namensschema | `<boot>_<segel>_v01.zip`; Formatversion und Metadaten in `manifest.json` |
 | Q5 | Beigaben | Tabellen + README + 2 Diagramme + Python-Leser |
 | Q6 | Winkelaufloesung | **1 Grad durchgehend, 360 Punkte** (-180 .. +179) |
 | Q7 | Reynoldsstufen | **6 Stufen, logarithmisch** |
 | Q8 | Trimm-Matrix | **4 Camber x 4 Twist x 2 Draft = 32 Faelle** |
 | Q9 | Hoehenraster | 250 mm unten, ab 75 % Hoehe auf 125 mm verdichtet |
-| Q10 | Ausgabeumfang | **Summen vollstaendig + Streifenlasten reduziert** (Details Abschnitt 6.3) |
+| Q10 | Ausgabeumfang | **Summen vollstaendig + Streifenlasten reduziert** (Details Abschnitt 6.2) |
 | Q11 | Segelmass-Herkunft | Klassenmaxima + dokumentierte Ist-Annahme (Faktoren in Config) |
 | Q12 | Camber/Twist | Als Matrix (Q8), Herleitung dokumentiert |
 | Q13 | Blattmasse | Tabelle **und** gezeichnete Schnittkonturen (SVG + PNG) |
@@ -88,7 +92,7 @@ Diese Tabelle ist das Ergebnis einer abgeschlossenen Abstimmung. Sie ist **nicht
 | Q18 | Winkeldefinition | -180 .. +180 Grad gegen lokale Sehne, 0 Grad = Wind vom Vorliek |
 | Q19 | Geschwindigkeit | **scheinbarer Wind** (apparent wind) |
 | Q20 | Verlaesslichkeit | Spalte `quality` je Zeile (0/1/2) |
-| Q21 | Tabellenlayout | Long Format + zusaetzliche Pivot-CSV |
+| Q21 | Tabellenlayout | Long-Format-Parquet + zusaetzliche Pivot-Parquet-Tabelle |
 | Q22 | README | Deutsch und Englisch |
 | Q23 | Beispielcode | Python-Leser + Beispiel-Lookup mit Interpolation |
 
@@ -100,7 +104,7 @@ Diese Tabelle ist das Ergebnis einer abgeschlossenen Abstimmung. Sie ist **nicht
 Stufe 0  Polar-Bibliothek      -> 2D-Profilpolaren (CL, CD, CM ueber alpha, Re)
 Stufe 1  Geometrie             -> Schnitte, Streifenraster, Chord/Camber/Twist je Streifen
 Stufe 2  Streifentheorie       -> Integration zur Summenkraft + Moment
-Stufe 3  Backen                -> Binaer- und CSV-Tabellen
+Stufe 3  Backen                -> Parquet-Tabellen mit Zstandard
 Stufe 4  Laufzeit              -> Lookup + Interpolation, < 10 us
 ```
 
@@ -142,8 +146,7 @@ sail-aero/
 │   │   └── interference.py       # Korrekturfaktoren
 │   ├── bake/
 │   │   ├── tables.py             # Erzeugung der Ergebnistabellen
-│   │   ├── binary.py             # Schreiben/Lesen .bin
-│   │   └── csv_out.py
+│   │   └── parquet.py            # Schreiben/Lesen der Parquet-Tabellen
 │   ├── runtime/
 │   │   ├── lookup.py             # Interpolator
 │   │   └── forces.py             # Kraftvektor + CoP
@@ -166,7 +169,7 @@ sail-aero/
 | y | **backbord** (Port) positiv | m |
 | z | **oben** | m |
 
-Rechtshaendig: `x cross y = z`. **Achtung:** Steuerbord ist negativ. Das ist ungewoehnlich und muss in README, CSV-Kopfzeile und Docstrings ausdruecklich stehen.
+Rechtshaendig: `x cross y = z`. **Achtung:** Steuerbord ist negativ. Das ist ungewoehnlich und muss in README, `manifest.json`, Parquet-Schemametadaten und Docstrings ausdruecklich stehen.
 
 **Ursprung:** Mastfuss (Deck-Level am Mast). Fuer das Folkeboot: Mastspur. Fuer den Optimist: Mastfuss im Mastschuh.
 
@@ -190,7 +193,9 @@ Der Punkt wird pro Segel in `class_rules.yaml` als `tack_position_m: [x, y, z]` 
 
 ### 5.4 Einheiten
 
-Intern SI: Meter, Sekunde, Newton, Radiant. **An der Schnittstelle** (Config, CSV, API) Grad und Meter. Konvertierung nur in `config.py` und `csv_out.py`.
+Intern SI: Meter, Sekunde, Newton, Radiant. **An der Schnittstelle**
+(Config, Parquet, API) Grad und Meter. Konvertierung nur in `config.py` und
+dem Parquet-Schreiber.
 
 Luftdichte: `rho = 1.225 kg/m^3` als Default, in Config ueberschreibbar.
 
@@ -198,103 +203,46 @@ Luftdichte: `rho = 1.225 kg/m^3` als Default, in Config ueberschreibbar.
 
 ## 6. Datenvertraege
 
-### 6.1 Binaerformat der Summen-Tabelle (`.bin`)
+Alle Ergebnistabellen werden ausschliesslich als Apache Parquet mit
+Zstandard-Kompression geschrieben. Numerische Mess- und Rechenwerte sind
+binary64; Indizes und Kennzeichen verwenden passende Integer- bzw.
+Boolean-Typen. Es gibt weder eigene Tabellen-Binaerdateien noch alternative
+Texttabellen. Jede Tabelle ist deterministisch nach ihren Schluesselfeldern
+sortiert und in unabhaengig lesbare Row Groups aufgeteilt.
 
-Little-Endian, alle Header-Felder ohne Padding.
+`manifest.json` enthaelt Format- und Schemanummer, Bibliotheks-/Codecversion,
+Feldtypen, Einheiten, Achsen- und Momentenbezug, Trim-/Rasterachsen, Zeilen-
+und Row-Group-Zahlen sowie SHA-256-Pruefsummen aller Parquet-Dateien.
+Integritaets- und Schemainformationen werden nicht in Kommentarzeilen
+repraesentiert.
 
-```
-Offset  Typ        Feld
-0       8 byte     magic = "SAILAER1"
-8       uint16     format_version = 1
-10      uint16     flags (bit0: little_endian, bit1: has_strips=0)
-12      uint32     sail_id_len
-16      ...        sail_id (UTF-8, sail_id_len Bytes)
-+0      uint32     n_alpha
-+4      uint32     n_re
-+8      uint32     n_camber
-+12     uint32     n_twist
-+16     uint32     n_draft
-+20     float32    alpha_start_deg
-+24     float32    alpha_step_deg
-+28     float32[n_re]      re_values
-+...     float32[n_camber]  camber_values
-+...     float32[n_twist]   twist_values_deg
-+...     float32[n_draft]   draft_values
-+...     float32[3]         tack_position_m (x, y, z)
-+...     float32            reference_area_m2
-+...     uint32             axes_convention_id = 1   # x fwd, y port, z up
-+...     uint32             crc32_of_payload
-+...     float32[...]       payload
-```
+### 6.1 Summen-Tabelle (`sums.parquet`)
 
-**Payload-Shape (C-Order, langsamste Achse zuerst):**
-`(n_alpha, n_re, n_camber, n_twist, n_draft, 6)`
-
-Die sechs Werte je Eintrag:
-
-| Index | Bedeutung |
-|---|---|
-| 0 | `CFx` Kraftbeiwert voraus |
-| 1 | `CFy` Kraftbeiwert backbord |
-| 2 | `CFz` Kraftbeiwert oben |
-| 3 | `CMx` Momentenbeiwert um x |
-| 4 | `CMy` Momentenbeiwert um y |
-| 5 | `CMz` Momentenbeiwert um z |
-
-**Normierung:** `C = F / (q * A)` mit `q = 0.5 * rho * v_apparent^2` und `A = reference_area_m2`. Momente analog mit `q * A * c_ref`, wobei `c_ref` die mittlere Chord ist (im Header NICHT enthalten -> als `reference_chord_m` ergaenzen, siehe unten).
-
-> **Korrektur gegenueber Erstentwurf:** `reference_chord_m` (float32) wird direkt nach `reference_area_m2` eingefuegt. Ohne diese Groesse sind die Momentenbeiwerte nicht rueckrechenbar.
-
-### 6.2 CSV der Summen-Tabelle (`sums.csv`)
-
-Long Format, Semikolon als Trenner, Dezimalpunkt, UTF-8, Kopfzeile mit `#`-Kommentaren fuer Metadaten.
-
-Pflicht-Kommentarzeilen am Dateianfang:
-
-```
-# sail_id: 420_MAIN
-# format_version: 1
-# axes: x=forward, y=PORT(positive), z=up ; origin=mastfoot
-# moment_reference: tack (gooseneck)
-# tack_position_m: 0.000000, 0.000000, 0.950000
-# reference_area_m2: 7.450000
-# reference_chord_m: 1.834000
-# alpha_definition: apparent wind angle vs local chord, 0deg = from luff
-# wind: apparent
-# generated: 2026-11-05T13:00:00Z
-# generator: sail-aero 1.0.0
-```
-
-Spalten:
+Long Format. Alle Kraft-/Momentenwerte und Geometrieangaben bleiben erhalten.
+`sail_id` ist UTF-8, die Indexfelder sind Integer, `cop_valid` ist Boolean,
+`quality` ist ein Integer und alle Mess-/Rechenwerte sind float64.
 
 | Spalte | Typ | Bedeutung |
 |---|---|---|
-| `sail_id` | str | |
-| `alpha_deg` | float | -180 .. 179 |
-| `re` | float | Reynoldszahl |
-| `v_apparent_ms` | float | scheinbare Windgeschwindigkeit |
-| `camber_idx` | int | 0..3 |
-| `twist_idx` | int | 0..3 |
-| `draft_idx` | int | 0..1 |
-| `camber` | float | f/c |
-| `twist_deg` | float | Root-zu-Tip |
-| `draft` | float | x_f/c |
-| `Fx_N` | float | voraus |
-| `Fy_N` | float | backbord |
-| `Fz_N` | float | oben |
-| `F_magnitude_N` | float | |
-| `Mx_Nm` | float | um Bezugspunkt |
-| `My_Nm` | float | |
-| `Mz_Nm` | float | |
-| `cop_x_m` | float | Angriffspunkt, bootsfest |
-| `cop_y_m` | float | |
-| `cop_z_m` | float | |
-| `cop_valid` | bool | 0/1, siehe 7.4 |
-| `CL_global` | float | |
-| `CD_global` | float | |
-| `quality` | int | 0 belegt, 1 plausibel, 2 geschaetzt |
+| `sail_id` | string | Segelkennung |
+| `alpha_deg` | float64 | -180 .. +179 |
+| `re` | float64 | Reynoldszahl |
+| `v_apparent_ms` | float64 | scheinbare Windgeschwindigkeit |
+| `camber_idx` | int32 | 0..3 |
+| `twist_idx` | int32 | 0..3 |
+| `draft_idx` | int32 | 0..1 |
+| `camber` | float64 | f/c |
+| `twist_deg` | float64 | Root-zu-Tip |
+| `draft` | float64 | x_f/c |
+| `Fx_N`, `Fy_N`, `Fz_N` | float64 | Kraftkomponenten im bootsfesten System |
+| `F_magnitude_N` | float64 | Kraftbetrag |
+| `Mx_Nm`, `My_Nm`, `Mz_Nm` | float64 | Momentenkomponenten um den Segelhals |
+| `cop_x_m`, `cop_y_m`, `cop_z_m` | float64 | Angriffspunkt im bootsfesten System |
+| `cop_valid` | bool | Angriffspunkt gueltig, siehe 7.4 |
+| `CL_global`, `CD_global` | float64 | globale Beiwerte |
+| `quality` | int8 | 0 belegt, 1 plausibel, 2 geschaetzt |
 
-### 6.3 Streifenlasten (`strips.csv`) - reduzierte Aufloesung
+### 6.2 Streifenlasten (`strips.parquet`) - reduzierte Aufloesung
 
 **Definition "reduziert" (verbindlich):**
 
@@ -308,17 +256,24 @@ Spalten:
 | `R2` | 2 | 3 | 1 | mehr Twist |
 | `R3` | 3 | 2 | 1 | mehr Woelbung |
 
-Spalten: `sail_id, alpha_deg, re, trim_case, strip_index, z_m, chord_m, camber, draft, twist_deg, alpha_local_deg, CL, CD, dFx_N_per_m, dFy_N_per_m, dFz_N_per_m, quality`
+Spalten und Typen: `sail_id` string, `alpha_deg`/`re`/`z_m`/`chord_m`/
+`camber`/`draft`/`twist_deg`/`alpha_local_deg`/`CL`/`CD`/`dFx_N_per_m`/
+`dFy_N_per_m`/`dFz_N_per_m` float64, `trim_case` string, `strip_index`
+int32, `quality` int8.
 
-### 6.4 Blattmasse (`geometry.csv`)
+### 6.3 Blattmasse (`geometry.parquet`)
 
 Eine Zeile je Streifen, volle Aufloesung:
 
-`sail_id, strip_index, z_m, chord_m, camber, draft, twist_deg, leech_offset_m, area_strip_m2`
+`sail_id` string, `strip_index` int32, `z_m`, `chord_m`, `camber`, `draft`,
+`twist_deg`, `leech_offset_m` und `area_strip_m2` float64.
 
-### 6.5 Pivot-Ansicht (`sums_pivot.csv`)
+### 6.4 Pivot-Ansicht (`sums_pivot.parquet`)
 
-Breites Format: Zeile = `alpha_deg`, Spalte = `re`, Zelle = `F_magnitude_N`. Nur zur menschlichen Kontrolle, nicht fuer Maschinen.
+Breites Format nur zur menschlichen Kontrolle: Schluesselspalten sind
+`sail_id`, `alpha_deg`, `camber_idx`, `twist_idx` und `draft_idx`;
+anschliessend folgt je ausgegebener Reynoldszahl eine float64-Spalte fuer
+`F_magnitude_N`. Die Reynoldszahlen und ihre Spaltennamen stehen im Manifest.
 
 ---
 
@@ -553,14 +508,14 @@ Arbeite in dieser Reihenfolge. Nach jedem Meilenstein muessen die Tests gruen se
 ### M1 - Grundgeruest und Konfiguration
 - Repository-Struktur aus Abschnitt 4
 - `config.py`: Laden, Schema-Validierung, `MissingClassRuleError`
-- `pyproject.toml`, Logging, CLI-Skelett
+- `pyproject.toml` mit PyArrow-Abhaengigkeit, Logging, CLI-Skelett
 - **Test:** Fehlende `luff_m` => klarer Abbruch mit Segel-ID und Feldname
 
 ### M2 - Geometrie
 - Parametrischer Schnittgenerator (7.1)
 - Silhouette aus `luff_m`, `foot_m`, `roach_m`, `headboard_m`
 - Streifenraster nach Q9 (250 mm / 125 mm ueber 75 %)
-- Export `geometry.csv`, SVG, PNG
+- Export `geometry.parquet`, SVG, PNG
 - **Test:** Kontur geschlossen, `area(sum of strips)` weicht < 2 % von `area_m2` ab
 - **Test:** Rasterverfeinerung 250->125->62.5 mm aendert Gesamtflaeche < 1 %
 
@@ -581,11 +536,11 @@ Arbeite in dieser Reihenfolge. Nach jedem Meilenstein muessen die Tests gruen se
 - **Test:** Konvergenz der Induktionsschleife in < 10 Durchlaeufen
 
 ### M5 - Backen
-- `binary.py` (Header exakt nach 6.1, CRC32)
-- `csv_out.py` (Metadaten-Kopf nach 6.2)
-- Summen-Tabelle voll, Streifen-Tabelle reduziert (6.3)
-- **Test:** Round-Trip Binaer schreiben/lesen => bitgleich
-- **Test:** CRC-Fehler wird erkannt
+- `parquet.py`: Parquet-Schreiben/Lesen mit Zstandard und Schemata aus Abschnitt 6
+- Summen-Tabelle voll, Streifen-Tabelle reduziert (6.2)
+- `manifest.json` enthaelt Version, Metadaten und SHA-256 aller Tabellen
+- **Test:** PyArrow-Roundtrip erhaelt Schluessel und finite float64-Werte bitgleich
+- **Test:** Schema-, Codec- und Pruefsummenfehler werden erkannt
 
 ### M6 - Laufzeit
 - `lookup.py`: 5D-Interpolation, alpha zyklisch
@@ -603,7 +558,7 @@ Arbeite in dieser Reihenfolge. Nach jedem Meilenstein muessen die Tests gruen se
 - **Test:** Jedes ZIP entpackt und ohne die anderen vier nutzbar
 
 ### M8 - Validierung
-- `scripts/convergence_study.py`: Streifenanzahl 12/18/26/35, Bericht als CSV + PNG
+- `scripts/convergence_study.py`: Streifenanzahl 12/18/26/35, Bericht als Parquet + PNG
 - Plausibilitaetspruefung: Kraft vs. Windgeschwindigkeit quadratisch (R^2 > 0.999)
 - Hold-out-Test: 10 zufaellige `alpha`-Werte nicht in Tabelle, gegen direkte Rechnung pruefen
 - `VALIDATION.md` mit Ergebnissen
@@ -630,11 +585,11 @@ Hals des Segels / sail tack: <x, y, z> m
 ## Dateien / Files
 | Datei | Inhalt |
 |---|---|
-| data/sums.bin | Binaertabelle, Format siehe SPEC.md Abschnitt 6.1 |
-| data/sums.csv | gleiche Daten, lesbar |
-| data/strips.csv | Streifenlasten, reduzierte Aufloesung |
-| data/geometry.csv | Blattmasse je Streifen |
-| data/sums_pivot.csv | Kontrollansicht |
+| data/manifest.json | Formatversion, Metadaten, Schemata und Pruefsummen |
+| data/sums.parquet | vollstaendige Summen, siehe SPEC.md Abschnitt 6.1 |
+| data/strips.parquet | Streifenlasten, reduzierte Aufloesung |
+| data/geometry.parquet | Blattmasse je Streifen |
+| data/sums_pivot.parquet | Kontrollansicht |
 | plots/polar.png | CL/CD ueber alpha |
 | plots/load_distribution.png | Lastverteilung ueber die Hoehe |
 | examples/example_lookup.py | Minimalbeispiel |
@@ -690,8 +645,10 @@ Diese Punkte MUSS der Auftraggeber entscheiden oder nachtragen. Der Agent legt s
 
 - [ ] Fuenf ZIP-Dateien erzeugt, jede eigenstaendig entpackbar und nutzbar
 - [ ] Jedes ZIP enthaelt `/data`, `/docs`, `/plots`, `/examples` und README (DE+EN)
-- [ ] `sums.bin` und `sums.csv` enthalten 360 x 6 x 4 x 4 x 2 = 69.120 Zeilen je Segel
-- [ ] `strips.csv` enthaelt 360 x 2 x 3 x n_strips Zeilen je Segel
+- [ ] `sums.parquet` enthaelt 360 x 6 x 4 x 4 x 2 = 69.120 Zeilen je Segel
+- [ ] `strips.parquet` enthaelt 360 x 2 x 3 x n_strips Zeilen je Segel
+- [ ] Alle Parquet-Dateien verwenden Zstandard; Schema und Metadaten stimmen mit `manifest.json` ueberein
+- [ ] Es werden weder CSV-Dateien noch eigene Tabellen-Binaerdateien erzeugt
 - [ ] Alle Tests aus M1-M8 gruen
 - [ ] Benchmark: 10.000 Lookups < 100 ms
 - [ ] `VALIDATION.md` mit Konvergenzstudie und Hold-out-Ergebnissen

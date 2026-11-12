@@ -1,7 +1,14 @@
 # SegelMacher: Offline-Generator fuer Segel-Lookups
 
-Stand: 05.11.2026  
+Stand: 12.11.2026
 Status: **Zur Umsetzung freigegeben am 05.11.2026 durch ausdruecklichen Nutzerauftrag.**
+
+Entscheidung vom 12.11.2026: CSV-Ausgaben und CSV-Exporte entfallen
+vollstaendig. Parquet mit Zstandard ist das verbindliche Ausgabeformat fuer
+die drei Ergebnistabellen. Die bisherigen CSV-Anforderungen sind durch
+A-S-00031 bis A-S-00036 ersetzt. Bestehende CSV-Ergebnisse werden nicht
+automatisch migriert; der Umsetzungsstand und noch ausstehende Leistungs-
+messungen stehen in Abschnitt 11 und im Umsetzungsplan.
 
 ## 0. Finale Anforderungen und technische Konkretisierung
 
@@ -38,7 +45,7 @@ nachtraeglich eingeschraenkt.
 | A-S-00018 | Hoehenraster 1/2/4, feinste zwei vergleichen, Grenzen erhalten; Fehler sperrt Export (7). |
 | A-S-00019 | Direkte Azimut-/Neigungs-/Zellenzwischenpunkte, Naht und Polstetigkeit geprueft (7). |
 | A-S-00020 | Eindeutige lokale Profilpolaren samt Profil-/Streifen-/Re-Zuordnung (8.1/8.3). |
-| A-S-00021 | Genau sechs Ausgabeprodukte, deterministisch sortierte CSV und 17-stellige Zahlen (8). |
+| A-S-00021 | Historisch ersetzt durch A-S-00031 bis A-S-00036; CSV-Ausgabeanforderung ist nicht mehr gueltig. |
 | A-S-00022 | Selbsttragende Metadaten/Snapshots, Parameter, Grenzen, Versionen und SHA256 (8.1/8.5/8.6). |
 | A-S-00023 | Exklusives Arbeitsverzeichnis, Schutz vorhandener Ergebnisse, atomare Veroeffentlichung, Fehlerdiagnose (8.7). |
 | A-S-00024 | Reproduzierbare Ergebnisse unabhaengig von Workeranzahl (9). |
@@ -48,6 +55,12 @@ nachtraeglich eingeschraenkt.
 | A-S-00028 | Numerik und physikalische Validierung getrennt, Quellen/Annahmen/fehlende Referenzen ehrlich sichtbar (2/5/8). |
 | A-S-00029 | Abbruch beendet nur eigene Worker, kein erfolgreiches Teilergebnis (3.3). |
 | A-S-00030 | Fehler-/Ressourcen-/Schreib-/Konkurrenzfaelle mit passenden Codes und Nachweisen (10). |
+| A-S-00031 | Genau sechs Ergebnisdateien; drei Tabellen als Parquet mit Zstandard, zwei Berichte und ein Manifest als JSON; keinerlei CSV-Erzeugung oder CSV-Export. |
+| A-S-00032 | Summen-, Einzelkraft- und Profiltabellen verwenden typisierte, dokumentierte Spalten und erhalten alle bisherigen Werte und physikalischen Beitraege verlustfrei als binary64. |
+| A-S-00033 | Manifest beschreibt Parquet-/Schema-/Codecversionen, Dimensionen, Einheiten, Winkel-/Momentenbezug und SHA-256 aller fuenf uebrigen Ergebnisdateien; unbekannte oder beschaedigte Formate werden sichtbar abgelehnt. |
+| A-S-00034 | Daten sind deterministisch nach Schluesseln sortiert und in unabhaengig lesbaren Row Groups angeordnet; gezielte Tabellenzugriffe benoetigen keine vollstaendige Tabellendekodierung. |
+| A-S-00035 | Ein Parquet-Roundtrip erhaelt alle Schluessel und endlichen binary64-Werte bitgleich; Summen, Einzelkraefte und Momente stimmen mit dem fachlichen Tabellenvertrag ueberein. |
+| A-S-00036 | Gleiche Eingaben und festgelegte Bibliotheks-/Codecversion ergeben dieselben Tabellenbytes unabhaengig von der Workeranzahl; Fehler oder Abbruch veroeffentlichen kein Teilergebnis. |
 
 Nachweise und offene Abnahmen stehen ausschliesslich im fortgefuehrten
 [Umsetzungsplan](../Umsetzungsplaene/Entwurf_Lookup_Generator.md).
@@ -122,9 +135,9 @@ beauftragte Implementierungspflicht. Referenzdaten dienen der Modellpruefung.
       Auftragsdatei.json
       LookUp\
         lookup.json
-        summen.csv
-        profile.csv
-        kraefte.csv
+        summen.parquet
+        profile.parquet
+        kraefte.parquet
         pruefbericht.json
         auftrag_ausgefuehrt.json
     fock\
@@ -548,7 +561,7 @@ Beschleunigungsschwellen zur Auswahl verlangt oder ausgefuehrt.
 
 | Rechenfunktion | Vorlaeufige Einschaetzung und Zuordnung |
 |---|---|
-| JSON-/CSV-Verarbeitung, Pfade, Pruefsummen, Berichte | CPU; ueberwiegend I/O und geringe Datenparallelitaet |
+| JSON-/Parquet-Verarbeitung, Pfade, Pruefsummen, Berichte | CPU; ueberwiegend I/O und geringe Datenparallelitaet |
 | Konturvalidierung und Aufbau des Streifenrasters | CPU; bei den vorhandenen kleinen Konturen kein plausibler GPU-Vorteil |
 | Einzelne Profil-/Interpolationsabfragen | CPU; Transfer- und Aufrufaufwand voraussichtlich groesser als die Rechenarbeit |
 | Gebuendelte Polarberechnung ueber viele Profile, Winkel und Re-Faelle | GPU-geeignet; bei vorhandenem passendem Backend auf GPU ausfuehren |
@@ -643,11 +656,13 @@ Der Konsument darf weder das urspruengliche Repository noch dessen
 Dokumentationspfade benoetigen. Effektive Konventionen und Eingabegeometrie
 werden deshalb im ausgefuehrten Auftrag mitgesichert.
 
-### 8.2 `summen.csv`
+### 8.2 `summen.parquet`
 
-```text
-form_id,alpha_deg,windneigung_deg,re_ref,CFx,CFy,CFz,CMx,CMy,CMz,angriff_x_m,angriff_y_m,angriff_z_m,angriff_gueltig,CM_rest_x,CM_rest_y,CM_rest_z,qualitaet
-```
+Spalten in der folgenden logischen Reihenfolge:
+`form_id` (UTF-8), `alpha_deg`, `windneigung_deg`, `re_ref`, `CFx`, `CFy`,
+`CFz`, `CMx`, `CMy`, `CMz`, `angriff_x_m`, `angriff_y_m`, `angriff_z_m`,
+`angriff_gueltig` (Boolean), `CM_rest_x`, `CM_rest_y`, `CM_rest_z` und
+`qualitaet` (UTF-8). Reelle Zahlen sind IEEE-754 binary64.
 
 Eine eindeutige Zeile je Form, Azimut, Windneigung und Referenz-Re. Komponenten liegen im
 lokalen Segelsystem vor, Momente um den Hals.
@@ -660,15 +675,16 @@ Ansatzpunkt im lokalen Segelsystem relativ zum Hals. Dessen Definition folgt
 dem gewaehlten physikalischen Modell; ein zusaetzliches Profilmoment darf
 nicht durch die Punktwahl verloren gehen.
 
-Diese Einzelbeitraege werden als Pflichtprodukt in `kraefte.csv` ausgegeben,
+Diese Einzelbeitraege werden als Pflichtprodukt in `kraefte.parquet` ausgegeben,
 nicht nur intern zur Summenbildung verwendet. Mehrere Kraefte je Betriebspunkt
 sind ausdruecklich zulaessig. Jede Kraft hat einen gueltigen raeumlichen
 Ansatzpunkt; ohne belastbaren Ansatzpunkt darf sie nicht als positionierte
 Einzelkraft exportiert werden.
 
-```text
-form_id,alpha_deg,windneigung_deg,re_ref,beitrag_id,CFx,CFy,CFz,ansatz_x_m,ansatz_y_m,ansatz_z_m,CM_eigen_x,CM_eigen_y,CM_eigen_z,qualitaet
-```
+Spalten in der folgenden logischen Reihenfolge:
+`form_id` (UTF-8), `alpha_deg`, `windneigung_deg`, `re_ref`, `beitrag_id`
+(Int64), `CFx`, `CFy`, `CFz`, `ansatz_x_m`, `ansatz_y_m`, `ansatz_z_m`,
+`CM_eigen_x`, `CM_eigen_y`, `CM_eigen_z` (binary64) und `qualitaet` (UTF-8).
 
 `beitrag_id` identifiziert den Beitrag innerhalb eines Betriebspunktes.
 Alle Kraftbeiwerte verwenden dieselbe Gesamtsegel-Referenzflaeche `S`,
@@ -682,7 +698,7 @@ Eigenmoment erhalten bleiben; sie sind als solche zu kennzeichnen.
 Es gilt fuer jeden Betriebspunkt:
 `CF_summe = Summe(CF_i)` und
 `CM_summe = Summe((r_i/c_ref) kreuz CF_i + CM_eigen_i)`.
-Diese Summen muessen mit `summen.csv` innerhalb der dokumentierten numerischen
+Diese Summen muessen mit `summen.parquet` innerhalb der dokumentierten numerischen
 Toleranzen uebereinstimmen. Kraefte an verschiedenen Punkten duerfen fuer
 eine spaetere SDP-Auswertung nicht durch eine ungewichtete Punktmittelung
 zusammengefasst werden.
@@ -726,11 +742,10 @@ reine Momente und nahezu verschwindende Resultierende pruefen die
 Momentenidentitaet und Gueltigkeitskennzeichnung. Ein Momentenanteil parallel
 zur Kraft bleibt als Restmoment erhalten.
 
-### 8.3 `profile.csv`
+### 8.3 `profile.parquet`
 
-```text
-profil_id,alpha_deg,re,CL,CD,CM,qualitaet
-```
+Spalten: `profil_id` (UTF-8), `alpha_deg`, `re`, `CL`, `CD`, `CM`
+(binary64) und `qualitaet` (UTF-8).
 
 Profile sind eindeutig in `lookup.json` beschrieben. Gleiche Profile duerfen
 wiederverwendet werden. Winkel/Re-Stuetzstellen muessen die tatsaechlich
@@ -741,16 +756,22 @@ raeumlichen Betriebspunkte des Gesamtsegels. Deren Neigung, Projektion und
 3D-Kopplung gehoeren in den Gesamtsegelprovider; sie duerfen nicht durch
 blosses Duplizieren der Profilpolaren als berechnet gelten.
 
-### 8.4 CSV-Konvention
+### 8.4 Parquet- und Zstandard-Konvention
 
-UTF-8, Komma als Feldtrenner, Punkt als Dezimalzeichen, Kopfzeile vorhanden,
-keine lokalisierten Zahlen oder Kommentarzeilen. Numerische Werte werden
-mit mindestens 17 signifikanten Dezimalstellen fuer binary64-Roundtrips
-geschrieben. Unbenoetigte Nachkommastellen muessen nicht aufgefuellt werden.
-Zeilen werden deterministisch nach ihren Schluesselspalten sortiert.
-Keine NaN-/Infinity-Werte oder Nullkraft-Ersatzzeilen fuer gescheiterte Punkte.
-Leere Ansatzpunktfelder sind ausschliesslich bei `angriff_gueltig = 0`
-zulaessig und bedeuten nicht einen fehlgeschlagenen Kraft-/Momentenfall.
+Genau die drei Ergebnistabellen werden als Apache Parquet mit Zstandard
+geschrieben. Spaltentypen folgen den Abschnitten 8.2 und 8.3; Masseinheiten,
+Koordinaten-/Momentenbezug, Tabellenachsen und Schluesselsemantik werden im
+Parquet-Schema und im `lookup.json`-Manifest dokumentiert. Werte sind ohne
+Dezimalformatierung binary64-genau zu erhalten; nicht endliche Zahlen und
+Ersatzzeilen fuer fehlgeschlagene Punkte sind unzulaessig. Zeilen sind
+deterministisch nach den jeweiligen Schluesseln sortiert.
+
+Row Groups werden unabhaengig lesbar erstellt und so dimensioniert, dass
+selektive Betriebspunktzugriffe mit Interpolationsnachbarn nicht die gesamte
+Tabelle dekodieren muessen. Die konkrete Zeilenzahl je Row Group und die
+quantitativen Latenz-/Speicherziele werden im protokollierten Zugriffstest
+festgelegt. `summen.csv`, `kraefte.csv`, `profile.csv` und andere CSV-Ableitungen
+werden weder erzeugt noch angeboten.
 
 ### 8.5 `pruefbericht.json`
 
@@ -821,7 +842,7 @@ Tests eine neue Sicherung angelegt.
 
 | Szenario | Erwartung |
 |---|---|
-| Gueltiger bereiter 420-Auftrag | Vollstaendiger Ordner mit allen sechs Ergebnisdateien einschliesslich positionierter Einzelkraefte |
+| Gueltiger bereiter 420-Auftrag | Vollstaendiger Ordner mit genau sechs Ergebnisdateien einschliesslich aller drei Parquet-Tabellen und positionierter Einzelkraefte; keine CSV-Datei |
 | 420-Grosssegel und synthetische Randfaelle | Referenzlauf erfolgreich; dreieckige Endpunkte und viereckige Kopfkanten korrekt geschnitten |
 | Entwurfsauftrag mit `lookup` | Klare Ablehnung, kein erfolgreiches Ergebnis |
 | Falsche Pfade/Versionen/Optionen | Fehler vor Beginn teurer Rechenarbeit |
@@ -843,3 +864,109 @@ Tests eine neue Sicherung angelegt.
 
 Diese Datei bleibt die massgebliche, zur Umsetzung freigegebene Spezifikation.
 Der vorhandene Umsetzungsplan wird fortgefuehrt; fachliche Abnahme ist separat.
+
+## 11. Kompaktes Parquet-Ausgabeformat
+
+Am 12.11.2026 durch den Nutzer festgelegt: **Apache Parquet mit Zstandard ist
+das einzige Format der Ergebnistabellen. CSV-Erzeugung, CSV-Export und
+alternative tabellarische Ausgabeformate entfallen vollstaendig.** Der
+Umsetzungsplan fuehrt Prototyp, Implementierung und Abnahme nach; keine
+Anforderung in diesem Abschnitt autorisiert Aenderungen am SegelPhysik-Core.
+
+### 11.1 Zweck und Abgrenzung
+
+SegelMacher erzeugt aerodynamische Segel-Lookups: Betriebspunkt zu Kraeften
+und Momenten. Es spezifiziert keine allgemeine meteorologische
+Windfelddatei. Das Ergebnisformat soll die bisherigen grossen CSV-Dateien
+vermeiden und effiziente gezielte Lesezugriffe ermoeglichen, ohne
+physikalische Beitraege oder binary64-Praezision zu verlieren.
+
+Der SegelPhysik-Core prueft derzeit Lookup-Identitaet und Referenz, wertet die
+Daten aber noch nicht als Windphysik aus. Ein Core-Leser wird separat
+freigegeben. Bestehende CSV-Ergebnisse werden nicht automatisch konvertiert
+oder ueberschrieben; neue Lookup-Auftraege erzeugen ausschliesslich das hier
+festgelegte Format.
+
+### 11.2 Ausgabeprodukte und Tabellen
+
+Jeder Lookup-Ordner enthaelt genau sechs Ergebnisdateien:
+`lookup.json`, `summen.parquet`, `kraefte.parquet`, `profile.parquet`,
+`pruefbericht.json` und `auftrag_ausgefuehrt.json`. Die drei Parquet-Tabellen
+werden mit Zstandard geschrieben. Es gibt keine CSV-Datei und keinen
+Konfigurationsschalter fuer CSV.
+
+Summen und Einzelkraefte bleiben getrennte Tabellen. Die kompakte
+Summen-Tabelle dient dem schnellen Simulationspfad; die vollstaendige
+Einzelkraft-Tabelle bleibt fuer Detaildarstellung und Auswertung erhalten.
+Beide duerfen nicht gleichzeitig als unabhaengige Lasten bilanziert werden.
+
+### 11.3 Parquet-Schema
+
+- `summen.parquet`: `form_id` (UTF-8), `alpha_deg`, `windneigung_deg`,
+  `re_ref`, `CFx`, `CFy`, `CFz`, `CMx`, `CMy`, `CMz`, `angriff_x_m`,
+  `angriff_y_m`, `angriff_z_m`, `angriff_gueltig` (Boolean), `CM_rest_x`,
+  `CM_rest_y`, `CM_rest_z`, `qualitaet` (UTF-8).
+- `kraefte.parquet`: `form_id` (UTF-8), `alpha_deg`, `windneigung_deg`,
+  `re_ref`, `beitrag_id` (Int64), `CFx`, `CFy`, `CFz`, `ansatz_x_m`,
+  `ansatz_y_m`, `ansatz_z_m`, `CM_eigen_x`, `CM_eigen_y`, `CM_eigen_z`
+  (binary64) und `qualitaet` (UTF-8).
+- `profile.parquet`: `profil_id` (UTF-8), `alpha_deg`, `re`, `CL`, `CD`,
+  `CM` (binary64) und `qualitaet` (UTF-8).
+- Alle reellen Spalten sind IEEE-754 binary64. Nullwerte sind nur fuer die
+  drei Resultierenden-Ansatzpunktspalten bei `angriff_gueltig = false`
+  zulaessig. Es gibt keine NaN-/Infinity-Werte oder Ersatzlasten.
+- Parquet-Schema und `lookup.json` beschreiben Feldtypen, Einheiten,
+  Koordinaten-/Momentenbezug, Tabellenachsen, Winkelkonventionen,
+  Referenzgroessen und Qualitaetssemantik. Betriebspunktidentitaet darf
+  nicht ausschliesslich aus Gleitkomma-Gleichheit rekonstruiert werden.
+- Summen, Einzelbeitraege, Positionen, Eigenmomente und Qualitaetsmerkmale
+  bleiben vollstaendig erhalten. Keine Rundung oder Streifenreduktion.
+
+### 11.4 Speicherung und Zugriff
+
+Tabellen werden streamingfaehig geschrieben und in deterministischer
+Schluesselreihenfolge sortiert. Parquet-Row-Groups sind unabhaengig lesbar;
+Spaltenprojektion und Row-Group-Auswahl sollen gezielte Betriebspunktabfragen
+einschliesslich benoetigter Interpolationsnachbarn ermoeglichen, ohne die
+vollstaendige Tabelle zu dekodieren. Dateigroessen, Offsets und interne
+Zaehler muessen ueber 4 GiB sicher bleiben.
+
+Das Manifest fuehrt `formatversion` mit Wert `"2"` und die Parquet-
+`schema_version` mit Wert `"1"` sowie Apache-Arrow-Version, Zstandard-Codec,
+Row-Group-Anzahlen, Zeilenzahlen und SHA-256-Pruefsummen aller fuenf uebrigen
+Ergebnisdateien nachvollziehbar auf (das Manifest kann nicht seine eigene
+Pruefsumme enthalten). Gleiche
+Eingaben und festgelegte Bibliotheks-/Codecversion muessen identische
+Tabellenbytes unabhaengig von der Workeranzahl erzeugen. Unbekannte
+Versionen, defekte Metadaten, abgeschnittene oder beschaedigte Daten fuehren
+zu einem sichtbaren Fehler. Kein Nullkraft-Ersatz, stiller Formatwechsel
+oder erfolgreiches Teilergebnis.
+
+Die spaetere Windtransformation beruecksichtigt relativen Wind einschliesslich
+Bootsbewegung und transformiert in das jeweilige Segelsystem sowie zurueck.
+Der aktuelle Core prueft Lookup-Identitaet und Referenz, wertet die Daten
+aber noch nicht als Windphysik aus. Negative Windneigungen werden weder
+gespiegelt noch begrenzt; einzelne Segel-Lookups enthalten keine
+Grosssegel-/Fock-Wechselwirkung.
+
+### 11.5 Implementierung und Abnahme
+
+Die C++-Implementierung verwendet Apache Arrow/Parquet 21.0.0, kompatibel
+mit dem Projektstandard C++17, und den Zstandard-Codec. Die Version wird im
+vcpkg-Manifest festgehalten. Der gezielte Leseprototyp prueft
+Spaltenprojektion, Row-Group-Auswahl, Interpolationsnachbarn sowie kalte und
+warme Zugriffe. Konkrete Schwellen fuer Dateigroesse, Zugriffslatenz und
+Spitzen-RAM werden anhand einer Kopie einer realen grossen Lookup-Tabelle
+festgelegt; die CSV-Ausgabe bleibt auch fuer diesen Vergleich kein
+Produktausgabeformat, Zwischenformat oder Benchmark-Kandidat. Fuer die
+Abnahme werden keine CSV-Dateien erzeugt.
+
+| Nachweis | Abnahmekriterium |
+|---|---|
+| Ergebnisform | Genau sechs Dateien wie in 11.2; keine CSV-Datei, kein CSV-Export. |
+| Verlustfreier Roundtrip | Alle Schluessel und endlichen binary64-Werte stimmen zwischen erzeugtem Parquet und unabhaengigem Parquet-Leser bitgleich ueberein. |
+| Kraft-/Momentenvertrag | Summen, Einzelkraefte, Ansatzpunkte und vollstaendige Momente erfuellen die Identitaeten aus 8.2; Profilpolaren sind endlich und korrekt zugeordnet. |
+| Selektiver Zugriff | Benutzte C++-Bibliothek liest nur erforderliche Spalten/Row-Groups fuer Betriebspunkte und Interpolationsnachbarn; Vollscan ist nicht Voraussetzung des Einzelzugriffs. |
+| Integritaet und Fehler | Manifest-Hashes, unbekannte Versionen sowie beschaedigte/abgeschnittene Parquet-Dateien werden korrekt geprueft bzw. sichtbar abgelehnt. |
+| Reproduzierbarkeit | Tabellenbytes sind bei identischen Eingaben und festen Abhaengigkeitsversionen unabhaengig von Workeranzahl identisch. |
+| Ressourcenmessung | Dateigroesse, Erzeugungszeit, Vollscan, kalte/warme Zugriffe, p95-Latenz und Spitzen-RAM einer grossen Testkopie dokumentiert; quantitative Grenzen werden mit Messnachweis festgehalten. |

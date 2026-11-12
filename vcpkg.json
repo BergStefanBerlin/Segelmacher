@@ -1,0 +1,20 @@
+{
+  "name": "segelmacher",
+  "version-string": "0.1.0",
+  "builtin-baseline": "177e8175121536d414f405ed8b3099b325a42638",
+  "dependencies": [
+    {
+      "name": "arrow",
+      "default-features": false,
+      "features": [
+        "parquet"
+      ]
+    }
+  ],
+  "overrides": [
+    {
+      "name": "arrow",
+      "version": "21.0.0"
+    }
+  ]
+}

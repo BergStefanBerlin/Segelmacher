@@ -1,7 +1,7 @@
 """Isolated native-CLI contracts. No pytest or external Python packages needed."""
 import argparse
-import csv
 import hashlib
+import itertools
 import json
 import math
 import pathlib
@@ -12,20 +12,39 @@ import subprocess
 import threading
 import time
 import uuid
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 EXPECTED = "e8c47ffca62459c08ae525320794b19884a72544a2857c77606473ccea862eb2"
 BACKUP = ROOT / "Code" / "tests" / "daten" / "main_20261105_195154_358.json"
+PARQUET_FILES = ("summen.parquet", "kraefte.parquet", "profile.parquet")
 
 
 def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def parquet_rows(path):
+    parquet_file = pq.ParquetFile(path)
+    assert parquet_file.metadata.num_row_groups > 0
+    for group in range(parquet_file.metadata.num_row_groups):
+        metadata = parquet_file.metadata.row_group(group)
+        assert all(metadata.column(i).compression == "ZSTD" for i in range(metadata.num_columns))
+        assert metadata.num_rows <= 16384
+    for batch in parquet_file.iter_batches(batch_size=8192):
+        yield from batch.to_pylist()
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", type=pathlib.Path, required=True)
+    parser.add_argument("--parquet-reader", type=pathlib.Path, required=True)
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
@@ -74,10 +93,61 @@ def main():
     _, log = invoke(p)
     output = p / "LookUp"
     assert set(f.name for f in output.iterdir()) == {
-        "lookup.json", "summen.csv", "profile.csv", "kraefte.csv", "pruefbericht.json", "auftrag_ausgefuehrt.json"
+        "lookup.json", *PARQUET_FILES, "pruefbericht.json", "auftrag_ausgefuehrt.json"
     }
     meta = json.loads((output / "lookup.json").read_text(encoding="utf-8"))
+    assert meta["formatversion"] == "2"
     assert meta["qualitaet"] == "ingenieurmodell_nicht_validiert"
+    assert meta["parquet"]["bibliothek"] == "Apache Arrow"
+    assert meta["parquet"]["bibliotheksversion"] == "21.0.0"
+    assert meta["parquet"]["schema_version"] == "1"
+    assert meta["parquet"]["kompression"] == "ZSTD"
+    assert meta["parquet"]["row_group_max_zeilen"] == 16384
+    assert set(meta["parquet"]["tabellen"]) == set(PARQUET_FILES)
+    assert set(meta["dateien_sha256"]) == {*PARQUET_FILES, "pruefbericht.json", "auftrag_ausgefuehrt.json"}
+    assert not any(path.suffix.lower() == ".csv" for path in output.iterdir())
+    expected_schemas = {
+        "summen.parquet": [
+            ("form_id", pa.string(), False), ("alpha_deg", pa.float64(), False),
+            ("windneigung_deg", pa.float64(), False), ("re_ref", pa.float64(), False),
+            ("CFx", pa.float64(), False), ("CFy", pa.float64(), False), ("CFz", pa.float64(), False),
+            ("CMx", pa.float64(), False), ("CMy", pa.float64(), False), ("CMz", pa.float64(), False),
+            ("angriff_x_m", pa.float64(), True), ("angriff_y_m", pa.float64(), True),
+            ("angriff_z_m", pa.float64(), True), ("angriff_gueltig", pa.bool_(), False),
+            ("CM_rest_x", pa.float64(), False), ("CM_rest_y", pa.float64(), False),
+            ("CM_rest_z", pa.float64(), False), ("qualitaet", pa.string(), False),
+        ],
+        "kraefte.parquet": [
+            ("form_id", pa.string(), False), ("alpha_deg", pa.float64(), False),
+            ("windneigung_deg", pa.float64(), False), ("re_ref", pa.float64(), False),
+            ("beitrag_id", pa.int64(), False), ("CFx", pa.float64(), False),
+            ("CFy", pa.float64(), False), ("CFz", pa.float64(), False),
+            ("ansatz_x_m", pa.float64(), False), ("ansatz_y_m", pa.float64(), False),
+            ("ansatz_z_m", pa.float64(), False), ("CM_eigen_x", pa.float64(), False),
+            ("CM_eigen_y", pa.float64(), False), ("CM_eigen_z", pa.float64(), False),
+            ("qualitaet", pa.string(), False),
+        ],
+        "profile.parquet": [
+            ("profil_id", pa.string(), False), ("alpha_deg", pa.float64(), False),
+            ("re", pa.float64(), False), ("CL", pa.float64(), False),
+            ("CD", pa.float64(), False), ("CM", pa.float64(), False),
+            ("qualitaet", pa.string(), False),
+        ],
+    }
+    for filename, fields in expected_schemas.items():
+        parquet_file = pq.ParquetFile(output / filename)
+        schema = parquet_file.schema_arrow
+        expected_schema = pa.schema([pa.field(name, dtype, nullable=nullable)
+                                     for name, dtype, nullable in fields])
+        assert schema.equals(expected_schema), (filename, schema, expected_schema)
+        table_metadata = meta["parquet"]["tabellen"][filename]
+        assert parquet_file.metadata.num_rows == table_metadata["zeilen"]
+        assert parquet_file.metadata.num_row_groups == table_metadata["row_groups"]
+    reader = subprocess.run(
+        [str(args.parquet_reader.resolve()), str(output)],
+        capture_output=True, encoding="utf-8", timeout=60
+    )
+    assert reader.returncode == 0, reader.stderr
     support = meta["interpolation"]["stuetzstellen"]
     support_angles = support["ausgegeben_azimut_deg"]
     support_elevations = support["ausgegeben_windneigung_deg"]
@@ -124,86 +194,90 @@ def main():
         assert set(range(0, 91, 10)).issubset(set(support["basis_windneigung_deg"]))
     for name, digest in meta["dateien_sha256"].items():
         assert sha(output / name) == digest
-        sums = {}
-        previous = None
-        poles = {}
-        with (output / "summen.csv").open(encoding="utf-8", newline="") as stream:
-            for row in csv.DictReader(stream):
-                key = (row["form_id"], float(row["alpha_deg"]), float(row["windneigung_deg"]), float(row["re_ref"]))
-                assert key not in sums
-                assert previous is None or key > previous
-                previous = key
-                f = [float(row[k]) for k in ("CFx", "CFy", "CFz")]
-                m = [float(row[k]) for k in ("CMx", "CMy", "CMz")]
-                assert all(math.isfinite(x) for x in f + m)
-                if key[2] == 90:
-                    polekey = key[0], key[3]
-                    assert polekey not in poles or poles[polekey] == f + m
-                    poles[polekey] = f + m
-                sums[key] = (f, m)
-                if row["angriff_gueltig"] == "1":
-                    r = [float(row[k]) / meta["bezuege"]["c_ref_m"] for k in ("angriff_x_m", "angriff_y_m", "angriff_z_m")]
-                    rest = [float(row[k]) for k in ("CM_rest_x", "CM_rest_y", "CM_rest_z")]
-                    cross = [r[1]*f[2]-r[2]*f[1], r[2]*f[0]-r[0]*f[2], r[0]*f[1]-r[1]*f[0]]
-                    assert max(abs(m[i]-cross[i]-rest[i]) for i in range(3)) < 1e-10
-                else:
-                    assert all(row[k] == "" for k in ("angriff_x_m", "angriff_y_m", "angriff_z_m"))
-        expected_rows = len(support_angles) * len(support_elevations) * len(job["betriebspunkte"]["reynoldszahlen_referenz"])
-        if args.full:
-            assert expected_rows >= 21600
-        assert len(support_elevations) >= 10
-        assert len(sums) == expected_rows, len(sums)
-        integrated = {}
-        with (output / "kraefte.csv").open(encoding="utf-8", newline="") as stream:
-            for row in csv.DictReader(stream):
-                key = row["form_id"], float(row["alpha_deg"]), float(row["windneigung_deg"]), float(row["re_ref"])
-                f = [float(row[k]) for k in ("CFx", "CFy", "CFz")]
-                r = [float(row[k]) / meta["bezuege"]["c_ref_m"] for k in ("ansatz_x_m", "ansatz_y_m", "ansatz_z_m")]
-                m = [float(row[k]) for k in ("CM_eigen_x", "CM_eigen_y", "CM_eigen_z")]
-                assert all(math.isfinite(x) for x in f + r + m)
-                value = integrated.setdefault(key, [0.0]*6)
-                moment = [r[1]*f[2]-r[2]*f[1]+m[0], r[2]*f[0]-r[0]*f[2]+m[1], r[0]*f[1]-r[1]*f[0]+m[2]]
-                for i, x in enumerate(f + moment):
-                    value[i] += x
-        for key, (f, m) in sums.items():
-            assert max(abs(integrated[key][i]-(f+m)[i]) for i in range(6)) < 1e-10
-        assert "Gesamt: 100 %" in log and "Phasen: 6/6" in log
-        progress = [int(x) for x in re.findall(r"Gesamt: (\d+) %", log)]
-        assert progress == sorted(progress)
-        previous = None
-        profile_ids = {row["profil_id"] for row in meta["geometrie"]["grids"]["4"]}
-        with (output / "profile.csv").open(encoding="utf-8", newline="") as stream:
-            for row in csv.DictReader(stream):
-                key = row["profil_id"], float(row["alpha_deg"]), float(row["re"])
-                assert key[0] in profile_ids
-                assert previous is None or key > previous
-                previous = key
-                assert all(math.isfinite(float(row[k])) for k in ("CL", "CD", "CM"))
-        before = {name: sha(output / name) for name in meta["dateien_sha256"]}
-        invoke(p, expected=5)
-        assert before == {name: sha(output / name) for name in before}
-        # A copied result is self-contained.
-        assert json.loads((output / "auftrag_ausgefuehrt.json").read_text(encoding="utf-8"))["geometrie"]
-        if not args.full:
-            for budget in (1, 4):
-                limited, _ = fixture("cpu_" + str(budget), budget)
-                invoke(limited)
-                assert sha(limited / "LookUp" / "summen.csv") == sha(output / "summen.csv")
-                report = json.loads((limited / "LookUp" / "pruefbericht.json").read_text(encoding="utf-8"))
-                assert report["gpu"]["backend"] == "CPU"
-                assert report["cpu_effektiv"] <= budget
-                assert 1 <= report["cpu_peak"] <= report["cpu_effektiv"]
-            if gpu["backend"] == "OpenCL":
-                with (output / "profile.csv").open(encoding="utf-8", newline="") as gpu_stream, \
-                     (limited / "LookUp" / "profile.csv").open(encoding="utf-8", newline="") as cpu_stream:
-                    gpu_rows, cpu_rows = csv.DictReader(gpu_stream), csv.DictReader(cpu_stream)
-                    for gpu_row, cpu_row in zip(gpu_rows, cpu_rows):
-                        assert (gpu_row["profil_id"], gpu_row["alpha_deg"], gpu_row["re"]) == \
-                               (cpu_row["profil_id"], cpu_row["alpha_deg"], cpu_row["re"])
-                        for key in ("CL", "CD", "CM"):
-                            g, c = float(gpu_row[key]), float(cpu_row[key])
-                            assert abs(g-c) <= 2e-12+2e-12*abs(c)
-                    assert next(gpu_rows, None) is None and next(cpu_rows, None) is None
+    sums = {}
+    previous = None
+    poles = {}
+    for row in parquet_rows(output / "summen.parquet"):
+        key = (row["form_id"], row["alpha_deg"], row["windneigung_deg"], row["re_ref"])
+        assert key not in sums
+        assert previous is None or key > previous
+        previous = key
+        f = [row[k] for k in ("CFx", "CFy", "CFz")]
+        m = [row[k] for k in ("CMx", "CMy", "CMz")]
+        assert all(math.isfinite(x) for x in f + m)
+        if key[2] == 90:
+            polekey = key[0], key[3]
+            assert polekey not in poles or poles[polekey] == f + m
+            poles[polekey] = f + m
+        sums[key] = (f, m)
+        if row["angriff_gueltig"]:
+            r = [row[k] / meta["bezuege"]["c_ref_m"] for k in ("angriff_x_m", "angriff_y_m", "angriff_z_m")]
+            rest = [row[k] for k in ("CM_rest_x", "CM_rest_y", "CM_rest_z")]
+            cross = [r[1]*f[2]-r[2]*f[1], r[2]*f[0]-r[0]*f[2], r[0]*f[1]-r[1]*f[0]]
+            assert max(abs(m[i]-cross[i]-rest[i]) for i in range(3)) < 1e-10
+        else:
+            assert all(row[k] is None for k in ("angriff_x_m", "angriff_y_m", "angriff_z_m"))
+    expected_rows = len(support_angles) * len(support_elevations) * len(job["betriebspunkte"]["reynoldszahlen_referenz"])
+    if args.full:
+        assert expected_rows >= 21600
+    assert len(support_elevations) >= 10
+    assert len(sums) == expected_rows, len(sums)
+    integrated = {}
+    previous_force_key = None
+    for row in parquet_rows(output / "kraefte.parquet"):
+        key = row["form_id"], row["alpha_deg"], row["windneigung_deg"], row["re_ref"]
+        force_key = (*key, row["beitrag_id"])
+        assert previous_force_key is None or force_key > previous_force_key
+        previous_force_key = force_key
+        f = [row[k] for k in ("CFx", "CFy", "CFz")]
+        r = [row[k] / meta["bezuege"]["c_ref_m"] for k in ("ansatz_x_m", "ansatz_y_m", "ansatz_z_m")]
+        m = [row[k] for k in ("CM_eigen_x", "CM_eigen_y", "CM_eigen_z")]
+        assert all(math.isfinite(x) for x in f + r + m)
+        value = integrated.setdefault(key, [0.0]*6)
+        moment = [r[1]*f[2]-r[2]*f[1]+m[0], r[2]*f[0]-r[0]*f[2]+m[1], r[0]*f[1]-r[1]*f[0]+m[2]]
+        for i, x in enumerate(f + moment):
+            value[i] += x
+    for key, (f, m) in sums.items():
+        assert max(abs(integrated[key][i]-(f+m)[i]) for i in range(6)) < 1e-10
+    assert "Gesamt: 100 %" in log and "Phasen: 6/6" in log
+    progress = [int(x) for x in re.findall(r"Gesamt: (\d+) %", log)]
+    assert progress == sorted(progress)
+    previous = None
+    profile_ids = {row["profil_id"] for row in meta["geometrie"]["grids"]["4"]}
+    for row in parquet_rows(output / "profile.parquet"):
+        key = row["profil_id"], row["alpha_deg"], row["re"]
+        assert key[0] in profile_ids
+        assert previous is None or key > previous
+        previous = key
+        assert all(math.isfinite(row[k]) for k in ("CL", "CD", "CM"))
+    before = {name: sha(output / name) for name in meta["dateien_sha256"]}
+    invoke(p, expected=5)
+    assert before == {name: sha(output / name) for name in before}
+    assert json.loads((output / "auftrag_ausgefuehrt.json").read_text(encoding="utf-8"))["geometrie"]
+    if not args.full:
+        cpu_reference_hashes = None
+        for budget in (1, 4):
+            limited, _ = fixture("cpu_" + str(budget), budget)
+            invoke(limited)
+            hashes = {name: sha(limited / "LookUp" / name) for name in PARQUET_FILES}
+            if cpu_reference_hashes is None:
+                cpu_reference_hashes = hashes
+            else:
+                assert hashes == cpu_reference_hashes
+            report = json.loads((limited / "LookUp" / "pruefbericht.json").read_text(encoding="utf-8"))
+            assert report["gpu"]["backend"] == "CPU"
+            assert report["cpu_effektiv"] <= budget
+            assert 1 <= report["cpu_peak"] <= report["cpu_effektiv"]
+        if gpu["backend"] == "OpenCL":
+            gpu_rows = parquet_rows(output / "profile.parquet")
+            cpu_rows = parquet_rows(limited / "LookUp" / "profile.parquet")
+            for gpu_row, cpu_row in itertools.zip_longest(gpu_rows, cpu_rows):
+                assert gpu_row is not None and cpu_row is not None
+                assert (gpu_row["profil_id"], gpu_row["alpha_deg"], gpu_row["re"]) == \
+                       (cpu_row["profil_id"], cpu_row["alpha_deg"], cpu_row["re"])
+                for key in ("CL", "CD", "CM"):
+                    g, c = gpu_row[key], cpu_row[key]
+                    assert abs(g-c) <= 2e-12+2e-12*abs(c)
     if not args.full:
         for name, mutate, code in (
             ("draft", lambda j: j.update(status="entwurf_rechenparameter_nicht_freigegeben"), 2),

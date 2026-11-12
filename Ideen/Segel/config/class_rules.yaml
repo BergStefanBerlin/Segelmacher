@@ -3,7 +3,7 @@ meta:
   created: "2026-11-05"
   status: "geometry_verified"
   strict_mode: False
-  units: "SI (m, N, rad intern / deg in CSV)"
+  units: "SI (m, N, rad intern / deg in Parquet)"
   coordinate_system: "x voraus, y BACKBORD positiv, z oben; Ursprung Mastfuss (MDP)"
   moment_reference: "Hals des jeweiligen Segels (Grosssegel = Gooseneck, Fock = Vorstagfuss)"
   wind_reference: "scheinbarer Wind (apparent)"

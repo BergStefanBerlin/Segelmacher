@@ -22,7 +22,7 @@ Anforderungen stehen nur in der freigegebenen Spezifikation.
 |---|---|---|
 | IDEE-S-00001 | Umfang entschieden, technische Ausarbeitung offen | Nutzerentscheidung: physikalisches Hybridmodell mit der Faehigkeitseinordnung aus Abschnitt 5.1 im Erstumfang; kein vorgeschalteter synthetischer Ersatzmodell-Rechenpfad. Der fruehere Testmodell-zuerst-Vorschlag ist zurueckgezogen. Zunaechst Einzel-Lookups; Grosssegel-/Fock-Interferenz folgt spaeter ueber einen Konfigurationsauftrag mit Einbaulagen und Segelstellungsrastern (Abschnitt 5.3). Jetzt internen Rechenkern auf mehrere identifizierbare Segelflaechen und getrennte Transformationen vorbereiten; keine Einbaulagen in intrinsische Geometrien aufnehmen. Konkrete Verfahren, Schliessungen und Referenzpruefungen werden technisch ausgearbeitet, ohne den vereinbarten Umfang erneut zur Auswahl zu stellen. |
 | IDEE-S-00002 | teilweise geklaert | Nutzerentscheidung: GPU-Eignung je Funktion fachlich einschaetzen, geeignete Funktionen bei vorhandener unterstuetzter GPU dort ausfuehren; vorerst keine Speedpruefung. Der fruehere Vorschlag einer 10-Prozent-Laufzeitschwelle ist zurueckgezogen. Offen bleiben die finale Freigabe des gesamten Ressourcenvertrags und die konkrete Backend-Technologie. |
-| IDEE-S-00003 | offen | CLI-, Auftrags- und Ergebnisvertrag einschliesslich Entwurf/Bereit-Status, CSV-Praezision, Fehlercodes und atomarer Ergebnisablage bestaetigen. |
+| IDEE-S-00003 | offen | CLI-, Auftrags- und Ergebnisvertrag einschliesslich Entwurf/Bereit-Status, Ergebnisformatversion, Fehlercodes und atomarer Ergebnisablage bestaetigen. |
 | IDEE-S-00004 | teilweise geklaert | Nutzer hat C++/CMake und die vorgeschlagene GPU-Richtung akzeptiert. Konkrete Distribution, Backend-Technologie und direkte Bibliotheksschnittstelle bleiben festzulegen. Noch keine exportierten C++-Schnittstellen oder CPPI-Kennungen. |
 | IDEE-S-00005 | teilweise geklaert | Nutzerentscheidung: Windneigung von 0 bis einschliesslich 90 Grad in 10-Grad-Schritten aufnehmen. Winkel-/Poldefinition und Ergebnisvertrag stehen in Abschnitt 4.3 der Spezifikation. Geeigneter raeumlicher Provider noch festzulegen; negative Elevationen nicht abgedeckt. Uebrige Startparameter und Toleranzen offen: sechs Re-Stufen, 1-Grad-Azimutraster, Hoehenraster 0.25/0.125 m, Verfeinerung 1/2/4, absolut 0.0001 plus relativ 0.01. Keine physikalische Genauigkeitszusage. |
 
@@ -32,3 +32,17 @@ Nicht angenommene Punkte unter ihrer Kennung mit Entscheidung erhalten.
 Nachtrag zu IDEE-S-00005 (Nutzerentscheidung 05.11.2026): absolute
 Beiwerttoleranz 0.0005, relative Toleranz weiterhin 0.01. Der fruehere
 Startvorschlag 0.0001 ist damit fuer neue Laeufe ersetzt.
+
+## Erweiterung: kompaktes Lookup-Format (06.11.2026)
+
+Status: **offener Spezifikationsentwurf, nicht zur Umsetzung freigegeben**.
+Die historischen Freigaben oben bleiben unveraendert. Neue Punkte beziehen
+sich auf [Abschnitt 11](../Spezifikation_Lookup_Generator.md#11-kompaktes-parquet-ausgabeformat).
+Noch keine A-S-, U-S- oder CPPI-Kennungen.
+
+| Kennung | Status | Entscheidung vor Finalisierung |
+|---|---|---|
+| IDEE-S-00006 | Angenommen; A-S-00031 bis A-S-00036 | Parquet/Zstandard als einziges Tabellenformat festgelegt; Apache Arrow 21.0.0 fuer C++17 gepinnt. Selektive Row-Group-Zugriffe und Ressourcenwerte werden praktisch abgenommen. |
+| IDEE-S-00007 | Angenommen; A-S-00031 und A-S-00033 | Genau sechs Ergebnisdateien, drei Parquet-Tabellen, Manifest und Berichte. CSV-Ausgabe, CSV-Export und Formatwahl werden entfernt; bestehende CSV-Ergebnisse werden nicht automatisch migriert. |
+| IDEE-S-00008 | Teilweise angenommen; Messwerte offen; A-S-00034 | Messung auf Tabellenkopie mit Dateigroesse, Erzeugung, Vollscan, kalten/warmen selektiven Abfragen, p95 und Spitzen-RAM. Kein CSV-Produktvergleich; quantitative Grenzen erst nach Messung festlegen. |
+| IDEE-S-00009 | CORE-Konsumentensicht angenommen; Umsetzung separat | Lookup ist ein aerodynamisches Segel-Lookup, keine allgemeine Windfelddatei. Der Konsumentenpfad transformiert relativen Wind einschliesslich Bootsbewegung; der Core wertet Lookup-Daten derzeit noch nicht als Windphysik aus. Keine Spiegelung/Begrenzung negativer Windneigungen und keine behauptete Grosssegel-/Fock-Wechselwirkung. Keine Core-Aenderung beauftragt. |

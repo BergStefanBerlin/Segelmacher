@@ -7,7 +7,11 @@ gekoppelte Grosssegel-/Fock-Rechnung.
 ## Bauen und testen (Windows / Visual Studio 2022)
 
 ```powershell
-cmake -S . -B build -DBUILD_TESTING=ON
+$env:VCPKG_ROOT = "C:\tools\vcpkg"
+git clone https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
+& "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+cmake -S . -B build -DBUILD_TESTING=ON `
+  -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 cmake -S Code\Core -B build-core -DBUILD_TESTING=ON
@@ -17,11 +21,19 @@ ctest --test-dir build-core -C Release --output-on-failure
 
 Falls CMake nicht auf PATH steht, liegt es bei Visual Studio Build Tools
 unter `Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin`.
-Der Core hat keine Windows-, Python-, GPU- oder GUI-Abhaengigkeit.
+Der Core hat keine Windows-, Arrow-, Python-, GPU- oder GUI-Abhaengigkeit.
 Die Windows-CLI verwendet BCrypt fuer SHA256.
-nlohmann/json 3.11.3 ist MIT-lizenziert mitgeliefert; kein Netz beim Build/Lauf.
-CTest verwendet neben nativen Vertragstests optional Python 3 (Standardbibliothek)
-als **Prozess-/CSV-Testtreiber**, nicht als aerodynamischen Rechenkern.
+nlohmann/json 3.11.3 ist MIT-lizenziert mitgeliefert. Die CLI verwendet
+Apache Arrow/Parquet 21.0.0 mit Zstandard; vcpkg stellt die festgelegte
+Abhaengigkeit beim ersten CMake-Lauf bereit. Fuer den Python-Integrationstest
+pyarrow installieren:
+
+```powershell
+python -m pip install -r Code\tests\requirements.txt
+```
+
+CTest verwendet neben nativen Vertragstests Python 3 und pyarrow als
+**Prozess-/Parquet-Testtreiber**, nicht als aerodynamischen Rechenkern.
 
 ## Ordnerstruktur
 
@@ -88,10 +100,14 @@ Ctrl+C beendet nur die eigenen Worker. Kein Unterprozess/externes Solverprogramm
 - [Fortgefuehrter Plan und tatsaechliche Nachweise](Umsetzungsplaene/Entwurf_Lookup_Generator.md)
 
 Vier Sehnenlastbeitraege je Streifen plus gebundene Kraft und freies
-Profilmoment. `kraefte.csv` erhaelt alle Beitraege, `summen.csv` ihre Summe
-samt zentraler Wirkungslinie und Restmoment. Beide niemals als zusaetzliche
-Lasten gleichzeitig anwenden. `profile.csv` ist lokal zweidimensional;
+Profilmoment. `kraefte.parquet` erhaelt alle Beitraege, `summen.parquet` ihre
+Summe samt zentraler Wirkungslinie und Restmoment. Beide niemals als
+zusaetzliche Lasten gleichzeitig anwenden. `profile.parquet` ist lokal zweidimensional;
 Neigung und Kopplung sind im Gesamtsegelmodell.
+Der Lookup-Ordner enthaelt genau diese drei Parquet-Tabellen sowie
+`lookup.json`, `pruefbericht.json` und `auftrag_ausgefuehrt.json`.
+Tabellen werden mit Zstandard komprimiert; CSV-Ausgabe und CSV-Export gibt es
+nicht.
 
 Auf Windows kann `gpu=automatisch` gebuendelte Profilpolaren mit einer
 OpenCL-FP64-GPU berechnen; `gpu=erforderlich` verlangt ein passendes Geraet.
@@ -121,9 +137,9 @@ Diese dimensionslosen numerischen Kennzahlen sind keine physikalische
 Genauigkeitsangabe gegen Messdaten.
 
 ```powershell
-python Code\tests\integration.py --exe build\Release\SegelMacher.exe
-python Code\tests\integration.py --exe build\Release\SegelMacher.exe --full --strict
-python Code\tests\integration.py --exe build\Release\SegelMacher.exe --full
+python Code\tests\integration.py --exe build\Release\SegelMacher.exe --parquet-reader build\Release\parquet_reader_tests.exe
+python Code\tests\integration.py --exe build\Release\SegelMacher.exe --parquet-reader build\Release\parquet_reader_tests.exe --full --strict
+python Code\tests\integration.py --exe build\Release\SegelMacher.exe --parquet-reader build\Release\parquet_reader_tests.exe --full
 ```
 
 Jeder Lauf verwendet einen eigenen Ordner unter `build`, die vorhandene

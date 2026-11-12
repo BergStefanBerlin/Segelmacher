@@ -10,12 +10,14 @@
       "ordnerbezug": "Unterordner des Ordners der uebergebenen Auftragsdatei; kein gesonderter Ausgabepfad erforderlich.",
       "dateien": [
         "lookup.json",
-        "summen.csv",
-        "profile.csv",
-        "kraefte.csv",
+        "summen.parquet",
+        "profile.parquet",
+        "kraefte.parquet",
         "pruefbericht.json",
         "auftrag_ausgefuehrt.json"
       ],
+      "tabellenformat": "Apache_Parquet",
+      "kompression": "Zstandard",
       "summen": "dimensionslose_kraft_und_momentenvektoren",
       "exportiertes_raster": "Feinstes berechnetes und erfolgreich geprueftes Raster.",
       "eingabepruefsummen_speichern": true,
