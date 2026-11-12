@@ -468,3 +468,22 @@ Stand: 12.11.2026.
   Es werden daher keine quantitativen Groessen- oder Latenzvorteile behauptet.
 - Physikalische Validierung gegen reale Segelreferenzen bleibt unabhaengig
   davon offen; Parquet aendert weder Rechenmodell noch Core-Vertrag.
+
+## 9. CLI-Ausgabepolitik und Core-Fingerprints
+
+Am 12.11.2026 beauftragt: zwei ausschliesslich aufrufbezogene Optionen,
+Fingerprint unabhaengig vom Neuschreiben, beim Ersetzen keine dauerhafte
+Sicherung. Die bestehende Core-Implementierung wird nur eingebunden,
+nicht veraendert.
+
+| Schritt | Anforderungen | Abhaengigkeiten | Stand / Nachweis |
+|---|---|---|---|
+| U-S-000017 Core-Fingerprint und Ausgabepolitik integrieren | A-S-00037, A-S-00038, A-S-00023, A-S-00030 | U-S-000015 | Implementiert: CLI-Parser, create-only/overwrite, Ruecksetzung bei fehlgeschlagenem Austausch, explizite Core-Fehler und ausschliesslich aerodynamics. Release-Build mit GUI-Core-Library und CTest 3/3 bestanden. Isoliertes Modell mit echten Schemas prueft Ersetzen, Abbruchschutz, update trotz uebersprungener Ausgabe, idempotenten Hash, unveraenderte andere Bereiche, Core-Schreibsperre und Fehler nach bereits geschriebenem Lookup. Kein Core-/GUI-Quellcode und keine produktiven Modelldaten veraendert. |
+
+Die vorhandene Core-Release-Library wurde im GUI-Build unter
+`C:\spdeps\guibuild\segelphysik-core\Release\segelphysik_core.lib` gefunden.
+Der dortige CMake-Cache und die Build-Projektdatei verweisen auf den
+bekannten Checkout `C:\_DATEN\Code\Cpp\Segelphysik\CORE\Code`.
+Diese Library ist der Standard; fehlt sie, wird aus diesem bekannten
+Quellpfad gebaut. Library und passender Headerpfad bleiben konfigurierbar.
+Die GUI-EXE wird nicht aufgerufen.

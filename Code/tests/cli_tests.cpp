@@ -28,6 +28,11 @@ int main() {
         check(cli::dispatch({"lookup","--auftrag","a","--max-prozessorzahl","0"})["exitcode"]==2);
         check(cli::dispatch({"lookup","--auftrag","a","--max-prozessorzahl","2","--max-prozessorzahl","2"})["exitcode"]==2);
         check(cli::dispatch({"pruefen","--auftrag","a","--unknown","1"})["exitcode"]==2);
+        check(cli::dispatch({"lookup","--auftrag","a","--fingerprint","invalid"})["exitcode"]==2);
+        check(cli::dispatch({"lookup","--auftrag","a","--output-policy","invalid"})["exitcode"]==2);
+        check(cli::dispatch({"lookup","--auftrag","a","--fingerprint","skip","--fingerprint","update"})["exitcode"]==2);
+        check(cli::dispatch({"lookup","--auftrag","a","--output-policy","overwrite","--output-policy","create-only"})["exitcode"]==2);
+        check(cli::dispatch({"pruefen","--auftrag","a","--fingerprint","update"})["exitcode"]==2);
         std::filesystem::path p="cli_duplicate_test.json";
         {std::ofstream out(p);out<<"{\"a\":1,\"a\":2}";}
         bool rejected=false;try{cli::read(p);}catch(const cli::Error&){rejected=true;}
@@ -53,6 +58,17 @@ int main() {
         check(!std::filesystem::exists(work/"LookUp"));
         check(!std::filesystem::exists(work/"LookUp.lock"));
         check(!aborted["pruefbericht"].is_null());
+        std::filesystem::create_directory(work/"LookUp");
+        {std::ofstream out(work/"LookUp"/"keep.txt");out<<"previous lookup";}
+        auto skipped=cli::dispatch({"lookup","--auftrag",(work/"Auftragsdatei.json").u8string()});
+        check(skipped["exitcode"]==0&&skipped["output_action"]=="skipped");
+        cli::cancelled=true;
+        aborted=cli::dispatch({"lookup","--auftrag",(work/"Auftragsdatei.json").u8string(),
+            "--output-policy","overwrite"});
+        cli::cancelled=false;
+        check(aborted["exitcode"]==130);
+        check(std::filesystem::exists(work/"LookUp"/"keep.txt"));
+        check(!std::filesystem::exists(work/"LookUp.lock"));
         std::cout<<checks<<" CLI contract checks passed\n";return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

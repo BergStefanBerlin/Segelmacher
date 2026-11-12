@@ -25,7 +25,19 @@ Der Core hat keine Windows-, Arrow-, Python-, GPU- oder GUI-Abhaengigkeit.
 Die Windows-CLI verwendet BCrypt fuer SHA256.
 nlohmann/json 3.11.3 ist MIT-lizenziert mitgeliefert. Die CLI verwendet
 Apache Arrow/Parquet 21.0.0 mit Zstandard; vcpkg stellt die festgelegte
-Abhaengigkeit beim ersten CMake-Lauf bereit. Fuer den Python-Integrationstest
+Abhaengigkeit beim ersten CMake-Lauf bereit.
+Fuer Modell-Fingerprints wird ausschliesslich die SegelPhysik-Core-API
+`aktualisiere_modell_fingerprints` eingebunden, kein eigener Modellhash.
+Standard unter Windows ist die vorhandene Release-Library
+`C:\spdeps\guibuild\segelphysik-core\Release\segelphysik_core.lib`.
+Die GUI-EXE selbst ist keine aufrufbare Fingerprint-Schnittstelle.
+Fehlt diese Library, wird der bekannte Core-Quellordner
+`..\Segelphysik\CORE\Code` verwendet. Mit den CMake-Cachewerten
+`SEGELPHYSIK_CORE_LIBRARY` (leer fuer Quellbuild) und
+`SEGELPHYSIK_CORE_SOURCE_DIR` sind Library und passende Header explizit
+einstellbar. Die vorgebaute Library ist fuer Release-Builds vorgesehen.
+Die Core-Quellintegration verwendet dessen unveraenderte Abhaengigkeiten.
+Fuer den Python-Integrationstest
 pyarrow installieren:
 
 ```powershell
@@ -63,13 +75,46 @@ Bestehende Entwurfsauftraege werden nicht automatisch freigegeben.
 ```
 
 Pfadauflosung relativ zum Auftragsordner; Ausgaben ausschliesslich dessen
-neues `LookUp`. Vorhandene Ergebnisse und Sperren werden nicht entfernt.
+`LookUp`. Vorhandene Sperren werden nicht entfernt.
 Pro Auftrag exklusive Sperre und eigener Arbeits-/Diagnoseordner; erst
 vollstaendig gepruefte Ergebnisse werden veroeffentlicht.
 Nach Absturz kann eine eigene verwaiste `LookUp.lock` verbleiben; nicht ohne
 Pruefung eines noch laufenden Auftrags entfernen.
 
 Stdout ist genau ein JSON-Objekt, auch bei Hilfe/Fehler.
+`lookup` akzeptiert zwei unabhaengige CLI-Parameter (nicht in der Auftragsdatei):
+
+| Parameter | Werte | Standard |
+|---|---|---|
+| `--fingerprint` | `update`: Core aktualisiert ausschliesslich den Aerodynamik-Fingerprint; `skip`: keine Aktualisierung | `skip` |
+| `--output-policy` | `overwrite`: neu berechnen und bisherigen Lookup ersetzen; `create-only`: nur erzeugen, falls noch nicht vorhanden, sonst erfolgreich ueberspringen | `create-only` |
+
+`--fingerprint update` wirkt auch, wenn `create-only` die Ausgabe ueberspringt.
+Der Auftrag muss unter `<Modellordner>\modells\aerodynamics` liegen;
+gehasht wird dieser gesamte Aerodynamikbaum, einschliesslich aller Segel.
+Core validiert die Modelldateien und Ressourcen gegen die Schemas aus seiner
+Laufzeitkonfiguration (`SEGELPHYSIK_SCHEMA_ROOT` bzw. gemeinsame Defaults).
+Die anderen Fingerprint-Bereiche bleiben unveraendert. Ein gleicher Hash
+aendert den Zeitstempel nicht.
+
+Bei `overwrite` bleibt der alte Lookup bis zur erfolgreich abgeschlossenen
+Berechnung erhalten. Beim Austausch wird er kurz zur Seite verschoben; bei
+fehlgeschlagener Veroeffentlichung wird er zurueckgesetzt. Nach erfolgreichem
+Austausch wird der alte Stand entfernt, ohne dauerhafte Sicherung.
+Erst danach folgt die optionale Core-Aktualisierung. Scheitert diese, meldet
+die CLI Fehlercode 5 und den bereits geschriebenen Ergebnisordner; der neue
+Lookup bleibt erhalten. Der Hash kann mit `create-only` nachgezogen werden.
+Lookup und Modellvalidierung sind keine gemeinsame atomare Transaktion.
+`output_action` meldet `created`, `overwritten` oder `skipped`; beim Fehler
+nach der Veroeffentlichung `written`. Bei erfolgreicher Fingerprint-Pruefung
+enthaelt das Abschluss-JSON zusaetzlich `fingerprint` mit Hash, Datum und
+`updated`. `pruefen` erlaubt diese beiden schreibenden Optionen nicht.
+
+```powershell
+& $exe lookup --auftrag "C:\Modelle\420\modells\aerodynamics\main\Auftragsdatei.json" --fingerprint update --output-policy create-only
+& $exe lookup --auftrag "C:\Modelle\420\modells\aerodynamics\main\Auftragsdatei.json" --fingerprint update --output-policy overwrite
+```
+
 Stderr enthaelt zeitgestempelte deutsche Phasen/Fortschritt.
 Im interaktiven VT-Terminal stehen darunter zwei fest aktualisierte Balken:
 Gesamt blau (abgeschlossene Pakete / 6 und aktuelles Paket), Paket gruen
@@ -137,9 +182,9 @@ Diese dimensionslosen numerischen Kennzahlen sind keine physikalische
 Genauigkeitsangabe gegen Messdaten.
 
 ```powershell
-python Code\tests\integration.py --exe build\Release\SegelMacher.exe --parquet-reader build\Release\parquet_reader_tests.exe
-python Code\tests\integration.py --exe build\Release\SegelMacher.exe --parquet-reader build\Release\parquet_reader_tests.exe --full --strict
-python Code\tests\integration.py --exe build\Release\SegelMacher.exe --parquet-reader build\Release\parquet_reader_tests.exe --full
+python Code\tests\integration.py --exe build\Release\SegelMacher.exe --parquet-reader build\Release\parquet_reader_tests.exe --model-schemas ..\Segelphysik\Modelle
+python Code\tests\integration.py --exe build\Release\SegelMacher.exe --parquet-reader build\Release\parquet_reader_tests.exe --model-schemas ..\Segelphysik\Modelle --full --strict
+python Code\tests\integration.py --exe build\Release\SegelMacher.exe --parquet-reader build\Release\parquet_reader_tests.exe --model-schemas ..\Segelphysik\Modelle --full
 ```
 
 Jeder Lauf verwendet einen eigenen Ordner unter `build`, die vorhandene

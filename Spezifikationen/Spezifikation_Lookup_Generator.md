@@ -61,6 +61,8 @@ nachtraeglich eingeschraenkt.
 | A-S-00034 | Daten sind deterministisch nach Schluesseln sortiert und in unabhaengig lesbaren Row Groups angeordnet; gezielte Tabellenzugriffe benoetigen keine vollstaendige Tabellendekodierung. |
 | A-S-00035 | Ein Parquet-Roundtrip erhaelt alle Schluessel und endlichen binary64-Werte bitgleich; Summen, Einzelkraefte und Momente stimmen mit dem fachlichen Tabellenvertrag ueberein. |
 | A-S-00036 | Gleiche Eingaben und festgelegte Bibliotheks-/Codecversion ergeben dieselben Tabellenbytes unabhaengig von der Workeranzahl; Fehler oder Abbruch veroeffentlichen kein Teilergebnis. |
+| A-S-00037 | `lookup --fingerprint update\|skip` ruft ausschliesslich die bestehende Core-API fuer den Bereich aerodynamics auf; update gilt auch ohne Neuschreiben, skip ist Standard. Andere Bereiche bleiben unveraendert. |
+| A-S-00038 | `lookup --output-policy overwrite\|create-only` ersetzt einen Lookup nach erfolgreicher Neuberechnung ohne dauerhafte Sicherung oder ueberspringt bestehende Ergebnisse; create-only ist Standard. Fehler vor dem Austausch erhalten den bisherigen Lookup. |
 
 Nachweise und offene Abnahmen stehen ausschliesslich im fortgefuehrten
 [Umsetzungsplan](../Umsetzungsplaene/Entwurf_Lookup_Generator.md).
@@ -162,6 +164,12 @@ fest verdrahtet; massgeblich ist `eingabe.segeldatei`.
 - `pruefen` validiert Eingaben, Pfade, Modellfaehigkeiten und grundsaetzliche
   Hardwareverfuegbarkeit ohne Solverlauf und ohne Ergebnisordner.
 - `--max-prozessorzahl` ist eine optionale aufrufbezogene Obergrenze.
+- `lookup --fingerprint update|skip` und
+  `--output-policy overwrite|create-only` steuern unabhaengig den Core-Aufruf
+  und die Ausgabe; Standards sind `skip` und `create-only`.
+  Die Optionen stehen ausschliesslich an der CLI und sind bei `pruefen`
+  unzulaessig. `update` wird auch beim Ueberspringen vorhandener Lookups
+  ausgefuehrt. Bei einer gescheiterten Berechnung wird kein Hash erneuert.
 - `--hilfe` und `--version` benoetigen keinen Auftrag.
 - Pfade mit Leerzeichen und Unicode werden unter Windows unterstuetzt.
 - Relative Eingabepfade beziehen sich auf den Ordner der Auftragsdatei,
@@ -190,7 +198,7 @@ Ohne entsprechende Nachweise gilt `ingenieurmodell_nicht_validiert`.
 | 2 | Ungueltiger Aufruf, Auftrag, Schema oder Eingabepfad |
 | 3 | Verfahren/Hardware nicht unterstuetzt oder Ressourcen unzureichend |
 | 4 | Berechnung oder Qualitaetspruefung fehlgeschlagen |
-| 5 | Ausgabe gesperrt, bereits vorhanden oder Schreibfehler |
+| 5 | Ausgabe-/Core-Schreibfehler, gesperrte Ausgabe oder Konflikt |
 | 130 | Benutzerabbruch |
 
 Ein Abbruch beendet auch gestartete Worker und Providerprozesse dieses Auftrags.
@@ -785,14 +793,43 @@ Der Bericht trennt numerische Pruefung von physikalischer Validierung.
 Originalauftrag und effektive Einstellungen, CLI-Limit, CPU/GPU-Backend,
 Tool-/Modellversion, Eingabepruefsummen sowie Snapshots der Segelgeometrie
 und Konventionen. Keine ausschliessliche Abhaengigkeit von externen Pfaden.
+Die effektiven CLI-Werte fuer `fingerprint` und `output_policy` werden
+ebenfalls festgehalten; das nachgelagerte Core-Ergebnis steht im Abschluss-JSON.
 
 ### 8.7 Schutz vor Teil- und Konkurrenzresultaten
 
-Vorhandenes `LookUp` wird nicht ueberschrieben. Berechnung/Export erfolgen in
+Ohne `--output-policy overwrite` wird vorhandenes `LookUp` erfolgreich
+uebersprungen. Die explizite CLI-Option erlaubt das Ersetzen trotz des
+Schutzstandards `ausgabe.vorhandene_ergebnisse=nicht_ueberschreiben` im Auftrag.
+Berechnung/Export erfolgen in
 einem exklusiven temporaeren Geschwisterordner; erst nach vollstaendiger
 Pruefung wird dieser als `LookUp` veroeffentlicht.
+Beim Ersetzen wird der alte Lookup kurz zur Seite verschoben. Scheitert
+der neue Ordnerwechsel, wird der alte Stand wiederhergestellt; Fehler der
+Wiederherstellung werden mit seinem verbliebenen Pfad gemeldet. Nach Erfolg
+wird der alte Stand geloescht, ohne dauerhafte Sicherung. Ein Prozessabsturz
+zwischen den Ordnerwechseln kann manuelle Wiederherstellung erfordern.
 Zwei gleichzeitige Auftraege im gleichen Segelordner duerfen sich nicht
 ueberschreiben oder vermischen. Der verlierende Aufruf meldet einen Konflikt.
+
+`--fingerprint update` verwendet
+`segelphysik::aktualisiere_modell_fingerprints` aus der echten Core-Bibliothek
+mit genau dem Bereich `aerodynamics`, niemals einen nachgebildeten Hash.
+Der Modellordner wird aus dem Vorfahren `modells/aerodynamics` des Auftrags
+bestimmt. Core prueft die Modelldateien und referenzierten Ressourcen ueber
+seine konfigurierte Schemabasis. Er aktualisiert ausschliesslich den
+Aerodynamik-Eintrag in `modells_validation.json`; der gesamte Bereich, auch
+andere Segel, geht in den Hash ein. Der bestehende Core-Vertrag bleibt
+unveraendert.
+
+Die Hashaktualisierung folgt erst nach Publikation und Entfernung des alten
+Austauschordners oder nach dem bewussten Ueberspringen. Ein unveraenderter
+Hash behaelt sein Datum. Bei Core-Fehlern meldet die CLI Code 5; bereits
+geschriebene Lookups bleiben erhalten und werden im Abschluss-JSON benannt.
+Lookup-Publikation und Modellvalidierung sind getrennte Transaktionen.
+Erfolg meldet zusaetzlich `output_action=created|overwritten|skipped` und
+bei `update` das Core-Ergebnis in `fingerprint`; ein Fehler nach
+Publikation meldet `output_action=written`.
 
 Fehlerberichte bleiben in einem eindeutig benannten Diagnoseordner neben
 `LookUp` erhalten; sie sind keine gueltigen Lookup-Ergebnisse.
@@ -858,7 +895,7 @@ Tests eine neue Sicherung angelegt.
 | CPU-Limit und mehrere Providerthreads | Globales Budget eingehalten |
 | GPU vorhanden/unverfuegbar und Funktion geeignet/ungeeignet | Zuordnung nach dokumentierter Einschaetzung ohne Speedpruefung; GPU-geeignete Funktionen nutzen verfuegbare unterstuetzte Hardware |
 | Abbruch, Speicher-/Schreibfehler | Fehlercode und Diagnose; keine scheinbar vollstaendige Tabelle |
-| Zweiter Lauf/vorhandenes Ergebnis | Kein Ueberschreiben |
+| Zweiter Lauf/vorhandenes Ergebnis | create-only ueberspringt; overwrite ersetzt erst nach erfolgreicher Neuberechnung |
 | Ergebnisordner auf anderen Rechner kopiert | Metadaten und Tabellen ohne Ursprungsrepository interpretierbar |
 | Bibliothek/CLI spaeter gemeinsam genutzt | Gleicher numerischer Kern, keine GUI-Abhaengigkeit |
 

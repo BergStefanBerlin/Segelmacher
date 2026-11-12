@@ -2,6 +2,7 @@
 #include "segel/core.hpp"
 #include "opencl_backend.hpp"
 #include "progress.hpp"
+#include <segelphysik/modell_fingerprints.hpp>
 #include <arrow/api.h>
 #include <arrow/io/api.h>
 #include <parquet/arrow/writer.h>
@@ -554,7 +555,35 @@ std::string hash(const fs::path& path) {
     throw Error(3,"CLI-SHA256 derzeit nur Windows BCrypt; Core bleibt plattformunabhaengig");
 #endif
 }
-J run(const fs::path& path,bool check,int limit) {
+namespace {
+fs::path fingerprint_model(const fs::path& parent) {
+    for(auto current=fs::weakly_canonical(parent);!current.empty();) {
+        if(current.filename()=="aerodynamics"&&current.parent_path().filename()=="modells") {
+            auto model_root=current.parent_path().parent_path();
+            ensure(fs::is_regular_file(model_root/"modells_data.json")&&
+                   fs::is_regular_file(model_root/"modells_validation.json"),2,
+                   "Fingerprint erfordert einen Modellordner mit modells_data.json und modells_validation.json");
+            return model_root;
+        }
+        auto next=current.parent_path();
+        if(next==current)break;
+        current=next;
+    }
+    throw Error(2,"--fingerprint update erfordert einen Auftrag unter modells/aerodynamics");
+}
+void update_fingerprint(J& result,const fs::path& model_root,const Logger& log) {
+    try {
+        const auto updated=segelphysik::aktualisiere_modell_fingerprints(
+            model_root,{segelphysik::ModellFingerprintBereich::aerodynamics});
+        const auto& value=updated.werte.at(0);
+        result["fingerprint"]={{"bereich","aerodynamics"},{"hash",value.hash},
+            {"modified_at",value.modified_at},{"updated",updated.validierungsdatei_aktualisiert}};
+        log.log("Fingerprint","Core-Aerodynamik-Fingerprint geprueft/aktualisiert: "+value.hash);
+    } catch(const std::exception& e) {
+        throw Error(5,std::string("Core-Fingerprint fehlgeschlagen: ")+e.what());
+    }
+}
+J run_options(const fs::path& path,bool check,int limit,bool fingerprint,bool overwrite) {
     Logger log;log.log("Eingabepruefung","Start: "+path.u8string()+" | Gesamt: wird ermittelt | Phasen: 0/6");
     Input input(path,limit);
     log.log("Eingabepruefung","Abgeschlossen, Segel "+input.grid.at("segel_id").get<std::string>());
@@ -567,11 +596,21 @@ J run(const fs::path& path,bool check,int limit) {
     }
     ensure(input.job.at("status")=="bereit",2,"auftrag.status muss bereit sein; Entwurfsauftrag nicht ausfuehrbar");
     fs::path parent=input.path.parent_path(),output=parent/"LookUp",lock=parent/"LookUp.lock";
-    ensure(!fs::exists(output),5,"LookUp bereits vorhanden");
+    const auto model_root=fingerprint?fingerprint_model(parent):fs::path{};
     std::error_code ec;
     bool locked=fs::create_directory(lock,ec);
     ensure(locked&&!ec,5,"Ausgabe gesperrt oder nicht beschreibbar: "+lock.u8string());
     struct Unlock { fs::path p;~Unlock(){std::error_code e;fs::remove(p,e);} } unlock{lock};
+    if(fs::exists(output)) {
+        ensure(!fs::is_symlink(output)&&fs::is_directory(output),5,"LookUp muss ein regulaerer Ordner sein");
+        if(!overwrite) {
+            log.log("Export","Vorhandener LookUp wird uebersprungen (create-only)");
+            auto result=success(output,"Vorhandener LookUp nicht neu geschrieben");
+            result["output_action"]="skipped";
+            if(fingerprint)update_fingerprint(result,model_root,log);
+            return result;
+        }
+    }
     std::string token=std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
     fs::path stage=parent/fs::u8path("LookUp.arbeiten."+token);
     ensure(fs::create_directory(stage,ec)&&!ec,5,"Arbeitsordner nicht anlegbar");
@@ -586,6 +625,7 @@ J run(const fs::path& path,bool check,int limit) {
         {"warnungen",J::array({"Keine vermessenen Segelpolaren; Abriss- und Hochwinkelschliessung nicht validiert",
                               "Keine Mast-/Rumpf-/Segelinterferenz",
                               "GPU beschleunigt nur Profilpolaren; Traglinie und Streifenintegration laufen auf CPU"})}};
+    bool published=false;
     try {
         log.log("Geometrieaufbereitung","Beginn: Konturschnitt, Woelbung/Twist, Raster 1/2/4");
         const auto& grid=input.grid;
@@ -839,6 +879,7 @@ J run(const fs::path& path,bool check,int limit) {
             {"cpu_gpu_vergleiche",cpu_gpu_checks},{"max_cpu_gpu_abweichung",max_cpu_gpu_error},{"speedbenchmark",false}};
         write(stage/"auftrag_ausgefuehrt.json",{{"originalauftrag",input.job},{"geometrie",input.geom},{"konventionen",input.conv},
             {"effektiv",{{"cpu_limit",input.budget},{"cli_limit",limit},{"backend",report["gpu"].at("backend")},
+                {"fingerprint",fingerprint?"update":"skip"},{"output_policy",overwrite?"overwrite":"create-only"},
                 {"gpu_plattform",!gpu_platform.empty()?J(gpu_platform):J(nullptr)},
                 {"gpu_geraet",!gpu_device.empty()?J(gpu_device):J(nullptr)},
                 {"modellstand",model},{"toolversion","0.1.0"},
@@ -866,15 +907,47 @@ J run(const fs::path& path,bool check,int limit) {
             {"grenzen",report.at("warnungen")},{"interferenz","nicht_berechnet"},{"eingaben_sha256",inputhash},{"dateien_sha256",hashes},
             {"pruefbericht","pruefbericht.json"}});
         ensure(!cancelled,130,"Benutzerabbruch vor Veroeffentlichung");
-        ensure(!fs::exists(output),5,"LookUp zwischenzeitlich angelegt");
-        fs::rename(stage,output,ec);ensure(!ec,5,"Veroeffentlichung fehlgeschlagen: "+ec.message());
+        const auto previous=parent/fs::u8path("LookUp.ersetzen."+token);
+        const bool replacing=fs::exists(output);
+        ensure(!replacing||overwrite,5,"LookUp zwischenzeitlich angelegt");
+        if(replacing) {
+            fs::rename(output,previous,ec);
+            ensure(!ec,5,"Bisheriger Lookup kann nicht zum Austausch verschoben werden: "+
+                output.u8string()+"; Systemfehler "+std::to_string(ec.value()));
+        }
+        fs::rename(stage,output,ec);
+        if(ec) {
+            const auto message=std::to_string(ec.value());
+            if(replacing) {
+                std::error_code rollback;
+                fs::rename(previous,output,rollback);
+                ensure(!rollback,5,"Veroeffentlichung und Wiederherstellung fehlgeschlagen; bisheriger Lookup: "+
+                    previous.u8string()+"; Systemfehler "+std::to_string(rollback.value()));
+            }
+            throw Error(5,"Veroeffentlichung fehlgeschlagen; Systemfehler "+message);
+        }
+        published=true;
+        if(replacing) {
+            fs::remove_all(previous,ec);
+            ensure(!ec,5,"Neuer Lookup geschrieben, alter Austauschordner kann nicht entfernt werden: "+
+                previous.u8string()+"; Systemfehler "+std::to_string(ec.value()));
+        }
+        auto result=success(output,quality);
+        result["output_action"]=replacing?"overwritten":"created";
+        if(fingerprint)update_fingerprint(result,model_root,log);
         log.log("Export","Abgeschlossen | Gesamt: 100 % | Phasen: 6/6 | "+output.u8string());
-        return success(output,quality);
+        return result;
     } catch(const std::exception& e) {
         int code=4;if(auto err=dynamic_cast<const Error*>(&e))code=err->code;
         if(dynamic_cast<const std::ios_base::failure*>(&e))code=5;
         if(dynamic_cast<const fs::filesystem_error*>(&e))code=5;
         if(dynamic_cast<const std::bad_alloc*>(&e))code=3;
+        if(published) {
+            log.log("Abschluss",std::string(e.what())+" | Lookup bereits geschrieben: "+output.u8string(),"FEHLER");
+            return {{"status","fehlgeschlagen"},{"exitcode",code},{"ergebnisordner",output.u8string()},
+                {"pruefbericht",(output/"pruefbericht.json").u8string()},{"output_action","written"},
+                {"meldung",e.what()}};
+        }
         report["status"]="fehlgeschlagen";report["fehler"]=e.what();report["exitcode"]=code;
         report["cpu_peak"]=input.peak.load();
         fs::path diag=parent/fs::u8path("LookUp.Diagnose."+token);
@@ -885,19 +958,35 @@ J run(const fs::path& path,bool check,int limit) {
         return failure;
     }
 }
+}
+J run(const fs::path& path,bool check,int limit) {
+    return run_options(path,check,limit,false,false);
+}
 J dispatch(const std::vector<std::string>& args) {
     try {
         if(args.size()==1&&(args[0]=="--hilfe"||args[0]=="--version"))
             return success({},args[0]=="--version"?"SegelMacher 0.1.0, H1":
-                "SegelMacher lookup|pruefen --auftrag <UTF-8-Pfad> [--max-prozessorzahl N]; "
+                "SegelMacher lookup|pruefen --auftrag <UTF-8-Pfad> [--max-prozessorzahl N] "
+                "[--fingerprint update|skip] [--output-policy overwrite|create-only]; "
                 "OpenCL-FP64-GPU fuer Profilpolaren, CPU-Fallback bei gpu=automatisch");
         ensure(!args.empty()&&(args[0]=="lookup"||args[0]=="pruefen"),2,"Befehl lookup oder pruefen erforderlich; --hilfe");
         fs::path path;int limit=0;bool seenlimit=false;
+        bool fingerprint=false,overwrite=false,seenfingerprint=false,seenpolicy=false;
         for(size_t i=1;i<args.size();++i) {
             auto option=args[i];
-            ensure((option=="--auftrag"||option=="--max-prozessorzahl")&&i+1<args.size(),2,"Ungueltige oder unvollstaendige Option: "+option);
+            ensure((option=="--auftrag"||option=="--max-prozessorzahl"||
+                option=="--fingerprint"||option=="--output-policy")&&i+1<args.size(),2,"Ungueltige oder unvollstaendige Option: "+option);
             auto value=args[++i];
             if(option=="--auftrag") {ensure(path.empty(),2,"--auftrag doppelt");path=fs::u8path(value);}
+            else if(option=="--fingerprint") {
+                ensure(!seenfingerprint,2,"--fingerprint doppelt");seenfingerprint=true;
+                ensure(value=="update"||value=="skip",2,"--fingerprint erwartet update oder skip");
+                fingerprint=value=="update";
+            } else if(option=="--output-policy") {
+                ensure(!seenpolicy,2,"--output-policy doppelt");seenpolicy=true;
+                ensure(value=="overwrite"||value=="create-only",2,"--output-policy erwartet overwrite oder create-only");
+                overwrite=value=="overwrite";
+            }
             else {
                 ensure(!seenlimit,2,"--max-prozessorzahl doppelt");seenlimit=true;
                 ensure(!value.empty()&&value.find_first_not_of("0123456789")==std::string::npos,2,"--max-prozessorzahl positive Ganzzahl erforderlich");
@@ -905,7 +994,10 @@ J dispatch(const std::vector<std::string>& args) {
                 ensure(limit>0,2,"--max-prozessorzahl muss positiv sein");
             }
         }
-        ensure(!path.empty(),2,"--auftrag fehlt");return run(path,args[0]=="pruefen",limit);
+        ensure(!path.empty(),2,"--auftrag fehlt");
+        ensure(args[0]=="lookup"||(!seenfingerprint&&!seenpolicy),2,
+            "--fingerprint und --output-policy sind nur fuer lookup vorgesehen");
+        return run_options(path,args[0]=="pruefen",limit,fingerprint,overwrite);
     } catch(const std::exception& e) {
         int code=4;
         if(dynamic_cast<const J::exception*>(&e)||dynamic_cast<const std::invalid_argument*>(&e))code=2;

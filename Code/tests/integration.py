@@ -1,9 +1,10 @@
-"""Isolated native-CLI contracts. No pytest or external Python packages needed."""
+"""Isolated native-CLI and Parquet contracts using PyArrow."""
 import argparse
 import hashlib
 import itertools
 import json
 import math
+import os
 import pathlib
 import re
 import signal
@@ -45,6 +46,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", type=pathlib.Path, required=True)
     parser.add_argument("--parquet-reader", type=pathlib.Path, required=True)
+    parser.add_argument("--model-schemas", type=pathlib.Path, required=True)
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
@@ -74,11 +76,13 @@ def main():
         (p / "Auftragsdatei.json").write_text(json.dumps(job, indent=2), encoding="utf-8")
         return p, job
 
-    def invoke(p, command="lookup", expected=0, extra=(), cwd=None):
+    def invoke(p, command="lookup", expected=0, extra=(), cwd=None, env=None):
         cmd = [str(exe), command, "--auftrag", str(p / "Auftragsdatei.json"), *extra]
-        result = subprocess.run(cmd, cwd=cwd or ROOT, capture_output=True, encoding="utf-8", timeout=1800)
-        (p / (command + ".stderr.log")).write_text(result.stderr, encoding="utf-8")
-        (p / (command + ".stdout.json")).write_text(result.stdout, encoding="utf-8")
+        result = subprocess.run(cmd, cwd=cwd or ROOT, env=env, capture_output=True, encoding="utf-8", timeout=1800)
+        log_folder = p if env is None else folder / "fingerprint_logs"
+        log_folder.mkdir(exist_ok=True)
+        (log_folder / (command + ".stderr.log")).write_text(result.stderr, encoding="utf-8")
+        (log_folder / (command + ".stdout.json")).write_text(result.stdout, encoding="utf-8")
         status = json.loads(result.stdout)
         assert status["exitcode"] == result.returncode, (status, result.stderr[-3000:])
         if expected is not None:
@@ -143,6 +147,7 @@ def main():
         table_metadata = meta["parquet"]["tabellen"][filename]
         assert parquet_file.metadata.num_rows == table_metadata["zeilen"]
         assert parquet_file.metadata.num_row_groups == table_metadata["row_groups"]
+        parquet_file.close()
     reader = subprocess.run(
         [str(args.parquet_reader.resolve()), str(output)],
         capture_output=True, encoding="utf-8", timeout=60
@@ -251,8 +256,74 @@ def main():
         previous = key
         assert all(math.isfinite(row[k]) for k in ("CL", "CD", "CM"))
     before = {name: sha(output / name) for name in meta["dateien_sha256"]}
-    invoke(p, expected=5)
+    skipped, _ = invoke(p)
+    assert skipped["output_action"] == "skipped"
     assert before == {name: sha(output / name) for name in before}
+    if not args.full:
+        (output / "obsolete.txt").write_text("old output", encoding="utf-8")
+        replaced, _ = invoke(p, extra=("--output-policy", "overwrite"))
+        assert replaced["output_action"] == "overwritten"
+        assert not (output / "obsolete.txt").exists()
+        assert not list(p.glob("LookUp.ersetzen.*"))
+        assert {name: before[name] for name in PARQUET_FILES} == \
+               {name: sha(output / name) for name in PARQUET_FILES}
+        model = folder / "testmodel"
+        aero = model / "modells" / "aerodynamics" / "main"
+        aero.mkdir(parents=True)
+        shutil.copytree(output, aero / "LookUp")
+        for name in ("main.json", "konventionen.json", "Auftragsdatei.json"):
+            shutil.copyfile(p / name, aero / name)
+        identity = {"id": "testmodel", "name": "Fingerprint test", "type": "body"}
+        schema = {"schema_version": "0.3", "release": False}
+        (model / "modells_data.json").write_text(json.dumps({
+            "schema": schema, "identity": identity, "groups": {"body": {"elements": [{
+                "id": "body", "display": {"hidden": True},
+                "placement": {"translation_m": [0, 0, 0], "rotation_xyzw": [0, 0, 0, 1]}
+            }]}}
+        }), encoding="utf-8")
+        fingerprints = {key: {"hash": "0" * 64, "modifiedAt": "2026-01-01"}
+                        for key in ("visualisation", "mass", "hydrostatics", "aerodynamics", "modelData")}
+        validation = {"schema": schema, "identity": identity,
+                      "model": {"fingerprints": fingerprints, "origins": []}}
+        validation_file = model / "modells_validation.json"
+        validation_file.write_text(json.dumps(validation), encoding="utf-8")
+        env = os.environ.copy()
+        env["SEGELPHYSIK_TEST_SCHEMA_ROOT"] = str(args.model_schemas.resolve())
+        original_validation = validation_file.read_bytes()
+        invoke(aero, extra=("--fingerprint", "skip"), env=env)
+        assert validation_file.read_bytes() == original_validation
+        updated, _ = invoke(aero, extra=("--fingerprint", "update"), env=env)
+        assert updated["output_action"] == "skipped"
+        assert updated["fingerprint"]["updated"] is True
+        after = json.loads(validation_file.read_text(encoding="utf-8"))
+        assert after["model"]["fingerprints"]["aerodynamics"]["hash"] == updated["fingerprint"]["hash"]
+        for key in fingerprints:
+            if key != "aerodynamics":
+                assert after["model"]["fingerprints"][key] == fingerprints[key]
+        validation_bytes = validation_file.read_bytes()
+        repeated, _ = invoke(aero, extra=("--fingerprint", "update"), env=env)
+        assert repeated["fingerprint"]["updated"] is False
+        assert validation_file.read_bytes() == validation_bytes
+        (model / "modells" / "aerodynamics" / "hidden.txt").write_text("new resource", encoding="utf-8")
+        changed, _ = invoke(aero, extra=("--fingerprint", "update"), env=env)
+        assert changed["fingerprint"]["hash"] != updated["fingerprint"]["hash"]
+        validation_bytes = validation_file.read_bytes()
+        (model / ".modells_validation.lock").mkdir()
+        failed, _ = invoke(aero, extra=("--fingerprint", "update"), env=env, expected=5)
+        assert "CORE-FPR-0002" in failed["meldung"]
+        assert validation_file.read_bytes() == validation_bytes
+        failed_after_write, _ = invoke(
+            aero, extra=("--output-policy", "overwrite", "--fingerprint", "update"),
+            env=env, expected=5)
+        assert failed_after_write["output_action"] == "written"
+        assert pathlib.Path(failed_after_write["ergebnisordner"]) == aero / "LookUp"
+        assert validation_file.read_bytes() == validation_bytes
+        (model / ".modells_validation.lock").rmdir()
+        written, _ = invoke(aero, extra=("--output-policy", "overwrite", "--fingerprint", "update"), env=env)
+        assert written["output_action"] == "overwritten"
+        stable, _ = invoke(aero, extra=("--fingerprint", "update"), env=env)
+        assert stable["fingerprint"]["updated"] is False
+        assert stable["fingerprint"]["hash"] == written["fingerprint"]["hash"]
     assert json.loads((output / "auftrag_ausgefuehrt.json").read_text(encoding="utf-8"))["geometrie"]
     if not args.full:
         cpu_reference_hashes = None
