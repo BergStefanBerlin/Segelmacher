@@ -1,0 +1,37 @@
+{
+  "schema_version": "0.1",
+  "status": "bereit",
+  "eingabe": {
+    "segeldatei": "main.json",
+    "konventionen": "konventionen.json"
+  },
+  "berechnung": {
+    "modellstand": "H1",
+    "parameter": {
+      "stall_start_deg": 12,
+      "stall_end_deg": 25,
+      "stall_re_shift_deg": 1,
+      "transition_re": 500000,
+      "transition_width": 0.2,
+      "viscous_cl2": 0.01,
+      "normal_pressure": 2,
+      "re_min": 1000,
+      "re_max": 100000000
+    }
+  },
+  "numerik": {
+    "streifenintegration": "mittelpunktregel",
+    "hoehenraster": {
+      "schritt_m": 0.25,
+      "verfeinern_ab_eta": 0.75,
+      "verfeinerter_schritt_m": 0.125,
+      "kontur_und_profilstationen_einfuegen": true,
+      "nullsehnen_als_punkte_behandeln": true
+    }
+  },
+  "ressourcen": {"max_prozessorzahl": 4, "gpu": "aus"},
+  "segelmodell": {
+    "dichte_kg_m3": [1.0, 1.4],
+    "viskositaet_m2_s": [0.000014, 0.000016]
+  }
+}

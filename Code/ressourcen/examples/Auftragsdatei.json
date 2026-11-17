@@ -36,7 +36,7 @@
   "betriebspunkte": {
     "anstellwinkel_deg": {"start": -180, "ende_exklusiv": 180, "schritt": 1},
     "reynoldszahlen_referenz": [200000, 300000, 450000, 700000, 1050000, 1550000],
-    "windneigung_deg": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+    "windneigung_deg": [-90, -80, -70, -60, -50, -40, -30, -20, -10, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
   },
   "formvarianten": {"modus": "unveraendert_aus_segeldatei"},
   "numerik": {

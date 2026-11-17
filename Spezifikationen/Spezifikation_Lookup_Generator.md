@@ -1,7 +1,12 @@
 # SegelMacher: Offline-Generator fuer Segel-Lookups
 
-Stand: 12.11.2026
+Stand: 15.11.2026
 Status: **Zur Umsetzung freigegeben am 05.11.2026 durch ausdruecklichen Nutzerauftrag.**
+
+Abschnitt 12 wurde am 14.11.2026 nach Nutzerentscheidungen und bestaetigter
+Core-Abstimmung finalisiert und zur Umsetzung freigegeben.
+Abschnitt 13 wurde am 15.11.2026 finalisiert; seine Umsetzung ist noch
+nicht beauftragt und seine Nachweise stehen aus.
 
 Entscheidung vom 12.11.2026: CSV-Ausgaben und CSV-Exporte entfallen
 vollstaendig. Parquet mit Zstandard ist das verbindliche Ausgabeformat fuer
@@ -36,7 +41,7 @@ nachtraeglich eingeschraenkt.
 | A-S-00009 | Explizit begruendete viskose/Re-/Abrissschliessung mit Grenzen und Referenzpruefungen (5.1). |
 | A-S-00010 | Gekoppelte Traglinie mit Abwind/induziertem Widerstand ohne Doppelzaehlung (5.1). |
 | A-S-00011 | Stetige Hochwinkel- und Rueckwaertsschliessung ohne synthetisches Ersatz-Lookup (5.1). |
-| A-S-00012 | Volle 3D-Lasten fuer Neigungen 0..90 alle 10 Grad, identischer Pol und stetiger Anschluss (4.3). |
+| A-S-00012 | Volle 3D-Lasten fuer die signierte Neigungsachse -90..+90 alle 10 Grad, beide identische Pole und stetiger Anschluss (4.3/12). |
 | A-S-00013 | Jede Einzelkraft mit realem Modellansatzpunkt, freien Eigenmomenten und exakter Momentensumme (8.2). |
 | A-S-00014 | Zentrale Wirkungslinie, Restmoment, ungueltiger Ansatz bei kleiner Kraft und Momentenidentitaet (8.2). |
 | A-S-00015 | Normierung q*S und q*S*c_ref sowie Hals-/Achsenbezuege dokumentiert (8.2). |
@@ -63,6 +68,10 @@ nachtraeglich eingeschraenkt.
 | A-S-00036 | Gleiche Eingaben und festgelegte Bibliotheks-/Codecversion ergeben dieselben Tabellenbytes unabhaengig von der Workeranzahl; Fehler oder Abbruch veroeffentlichen kein Teilergebnis. |
 | A-S-00037 | `lookup --fingerprint update\|skip` ruft ausschliesslich die bestehende Core-API fuer den Bereich aerodynamics auf; update gilt auch ohne Neuschreiben, skip ist Standard. Andere Bereiche bleiben unveraendert. |
 | A-S-00038 | `lookup --output-policy overwrite\|create-only` ersetzt einen Lookup nach erfolgreicher Neuberechnung ohne dauerhafte Sicherung oder ueberspringt bestehende Ergebnisse; create-only ist Standard. Fehler vor dem Austausch erhalten den bisherigen Lookup. |
+| A-S-00039 | `Context::solve` verarbeitet jeden endlichen signierten 3D-Windvektor fuer beta in [-90,+90] direkt; keine Lastspiegelung, beidseitige Crossflow-Ueberblendung und azimutinvariante exakte Pole (12.2). |
+| A-S-00040 | Auftraege muessen die vollstaendige signierte 19-Werte-Achse enthalten; Ausgabeachse, Ressourcenlimit, Zwischenpunktpruefung und beide Pole werden fuer beide Vorzeichen validiert (4.3/12.3/12.5). |
+| A-S-00041 | Lookup-Manifestversion 3 beschreibt die signierte Domaene und den bestaetigten Core-Vertrag; aeltere Lookup-Formatversionen werden nicht als kompatible Eingabe unterstuetzt (11.4/12.3/12.4). |
+| A-S-00042 | Tests pruefen signed Winkel, Transformation, Numerik, Parquet/Manifest und Momentenvertrag; fehlende physikalische Validierung bleibt sichtbar, aber ist keine Nutzungsbedingung (12.5). |
 
 Nachweise und offene Abnahmen stehen ausschliesslich im fortgefuehrten
 [Umsetzungsplan](../Umsetzungsplaene/Entwurf_Lookup_Generator.md).
@@ -360,17 +369,20 @@ vor Beginn der teuren Berechnung explizit abgelehnt.
 
 ### 4.3 Raeumliche Anstroemung
 
-Das Start-Windneigungsraster enthaelt
-`[0, 10, 20, 30, 40, 50, 60, 70, 80, 90]` Grad als Array
+Das Windneigungsraster enthaelt genau
+`[-90, -80, ..., 0, ..., 80, 90]` Grad als streng aufsteigendes Array
 `betriebspunkte.windneigung_deg`. Fuer jeden Azimut, jede Referenz-Re-Stufe
-und jede Form werden alle zehn Neigungen berechnet.
+und jede Form werden alle 19 Neigungen direkt berechnet. Die alte Achse
+`[0, 10, ..., 90]` wird nicht still erweitert, sondern als veralteter Auftrag
+mit Umstellungshinweis abgelehnt.
 
 Die Windneigung beta bezeichnet die Elevation der Windherkunft gegen die
 lokale XY-Ebene des Segels, nicht den Kraengungswinkel des Bootes.
 Mit Azimut alpha ist der Windherkunfts-Einheitsvektor
 `(cos(beta)*cos(alpha), cos(beta)*sin(alpha), sin(beta))`;
 trigonometrische Funktionen verwenden Radiant. Die Stroemung zeigt entgegen
-diesem Vektor. Bei beta = 90 Grad wird exakt `(0,0,1)` verwendet.
+diesem Vektor. Bei beta = -90 Grad wird exakt `(0,0,-1)`, bei beta = +90 Grad exakt
+`(0,0,1)` als Windherkunft verwendet.
 Referenz-Re und Staudruck beziehen sich auf die gesamte relative
 Windgeschwindigkeit; ein Provider muss seine lokalen Projektionen und
 Geschwindigkeitsbezuege explizit dokumentieren.
@@ -968,7 +980,7 @@ einschliesslich benoetigter Interpolationsnachbarn ermoeglichen, ohne die
 vollstaendige Tabelle zu dekodieren. Dateigroessen, Offsets und interne
 Zaehler muessen ueber 4 GiB sicher bleiben.
 
-Das Manifest fuehrt `formatversion` mit Wert `"2"` und die Parquet-
+Das Manifest fuehrt `formatversion` mit Wert `"3"` und die Parquet-
 `schema_version` mit Wert `"1"` sowie Apache-Arrow-Version, Zstandard-Codec,
 Row-Group-Anzahlen, Zeilenzahlen und SHA-256-Pruefsummen aller fuenf uebrigen
 Ergebnisdateien nachvollziehbar auf (das Manifest kann nicht seine eigene
@@ -982,9 +994,10 @@ oder erfolgreiches Teilergebnis.
 Die spaetere Windtransformation beruecksichtigt relativen Wind einschliesslich
 Bootsbewegung und transformiert in das jeweilige Segelsystem sowie zurueck.
 Der aktuelle Core prueft Lookup-Identitaet und Referenz, wertet die Daten
-aber noch nicht als Windphysik aus. Negative Windneigungen werden weder
-gespiegelt noch begrenzt; einzelne Segel-Lookups enthalten keine
-Grosssegel-/Fock-Wechselwirkung.
+aber noch nicht als Windphysik aus. Negative Windneigungen werden direkt aus dem signierten 3D-Vektor berechnet
+und weder gespiegelt noch begrenzt. Version 3 ist die einzige unterstuetzte
+Lookup-Formatversion; es gibt keine Legacy-Leser fuer aeltere Lookups.
+Einzelne Segel-Lookups enthalten keine Grosssegel-/Fock-Wechselwirkung.
 
 ### 11.5 Implementierung und Abnahme
 
@@ -1007,3 +1020,831 @@ Abnahme werden keine CSV-Dateien erzeugt.
 | Integritaet und Fehler | Manifest-Hashes, unbekannte Versionen sowie beschaedigte/abgeschnittene Parquet-Dateien werden korrekt geprueft bzw. sichtbar abgelehnt. |
 | Reproduzierbarkeit | Tabellenbytes sind bei identischen Eingaben und festen Abhaengigkeitsversionen unabhaengig von Workeranzahl identisch. |
 | Ressourcenmessung | Dateigroesse, Erzeugungszeit, Vollscan, kalte/warme Zugriffe, p95-Latenz und Spitzen-RAM einer grossen Testkopie dokumentiert; quantitative Grenzen werden mit Messnachweis festgehalten. |
+
+## 12. Vorzeichenbehaftete lokale Windneigung
+
+**Status: am 14.11.2026 finalisiert und zur Umsetzung freigegeben.** Die
+Nutzerentscheidungen und die bestaetigte Core-Abstimmung sind in dieser
+Spezifikation zusammengefuehrt. Anforderungszuordnungen stehen in Abschnitt 0
+und die Umsetzung samt Nachweisen im
+[Umsetzungsplan](../Umsetzungsplaene/Entwurf_Lookup_Generator.md#10-vorzeichenbehaftete-lokale-windneigung).
+Negative und positive Neigungen werden direkt aus dem signierten 3D-Vektor
+berechnet. Alte Lookups werden nicht als Version 3 gelesen; produktive
+Lookups muessen nach erfolgreicher Neuerzeugung ersetzt werden. Die
+physikalische Validierung bleibt offen und ist keine Bedingung fuer die
+Nutzbarkeit der Modelle.
+
+### 12.1 Problem und Ziel
+
+Vor dieser Umsetzung akzeptierte der S-2.0-Stand als Auftragsachse
+ausschliesslich `[0,10,...,90]` und `segel::Context::solve` lehnte `beta < 0`
+ab. Auch der Lookup-Inhalt deckte
+nur nichtnegative Neigungen ab. Negative lokale Elevationen koennen bei
+Krangung, Stampfen, Einbaulage oder relativer Bewegung auftreten; der
+Weltwind bleibt dabei unabhaengig von der Bootsneigung. Bei 20 Grad Rollung
+und passender seitlicher horizontaler Windherkunft ergibt sich beispielsweise
+beta = -20 Grad; Windrichtung und Rollvorzeichen bestimmen das Vorzeichen.
+
+Ziel ist ein direkt berechneter Lookup fuer die ganze Kugel:
+`-90 <= beta <= +90` Grad, ohne Spiegelung bereits berechneter Lasten,
+Begrenzung oder Extrapolation. Die Lasten sind weiterhin fuer ein einzelnes
+Segel, nicht fuer eine gekoppelte Grosssegel-/Fock-Rechnung.
+
+### 12.2 Winkel-, Modell- und Schnittstellenvertrag
+
+- **H1-Eignung, was der Softwarevertrag pruefen kann:** H1 bildet den
+  Stroemungseinheitsvektor als vollstaendigen vorzeichenbehafteten
+  3D-Vektor `u = -h`. Der abgeloeste Anteil berechnet Flaechendruck aus
+  `dot(u,n)` samt Vorzeichen und Reibung aus dem tangentialen Vektor.
+  Der gebundene Anteil verwendet die horizontale Projektion fuer die
+  Traglinie und wird bei Spannweitenanstroemung ausgeblendet; nahe beiden
+  Polen darf keine Division durch die verschwindende Horizontalprojektion
+  stattfinden. Die positive Beta-Achse darf weder fuer Lasten noch Momente
+  als Symmetrie-Ersatz fuer negative Beta dienen. Fuer beide Pole, die
+  beidseitige Ueberblendung und eine asymmetrische Segelgeometrie sind
+  endliche, komponentenweise konsistente Kraefte und Momente nachzuweisen.
+  Das ist ein Software-/Numeriknachweis, kein CFD- oder Messnachweis.
+- **Modellgrenzen:** Die Crossflow-Traglinie vernachlaessigt die
+  spannweitige Komponente der gebundenen Zirkulationskopplung; ihr Anteil
+  wird im Hoch-Elevationsbereich ausgeblendet. Die abgeloeste
+  Mittelflaechen-Impuls-/Reibungsschliessung verarbeitet den vollen Vektor,
+  ist aber nicht an negativen Neigungen physikalisch validiert. Beidseitige
+  Ueberblendung nach `abs(beta)` ist eine H1-Schliessungsannahme, nicht
+  physikalische Symmetrie. Einzel-Lookups bleiben Einzel-Segel-Lookups;
+  keine Interferenz oder gekoppelte Fock-/Grosssegelwirkung behaupten.
+- Die bestehende Windherkunftskonvention bleibt erhalten:
+  `h = (cos(beta)*cos(alpha), cos(beta)*sin(alpha), sin(beta))`,
+  lokales X voraus, Y backbord, Z oben; Stroemungseinheitsvektor `u = -h`.
+  Grad werden fuer trigonometrische Funktionen in Radiant umgerechnet.
+  `beta = -90` bedeutet Herkunft exakt `(0,0,-1)`, `+90` exakt `(0,0,1)`.
+  Azimut ist an beiden Polen geometrisch unbestimmt; alle ausgegebenen
+  Azimutzeilen fuer denselben Pol/Form/Re haben identische CF- und CM-Vektoren.
+- Der Generator berechnet jeden negativen Betriebspunkt aus dessen eigenem
+  vorzeichenbehaftetem 3D-Stroemungsvektor und der wirklichen Geometrie.
+  Die bisherige Ueberblendung des anliegenden Anteils bei 60 bis 80 Grad
+  ist anhand von `abs(beta)` auf beide Pole auszudehnen. Impuls, Reibung,
+  Lastpositionen und Momente nutzen weiterhin den vorzeichenbehafteten
+  Vektor. Symmetrische Ueberblendungsgrenzen sind eine explizite
+  Modellannahme, keine behauptete Lastsymmetrie.
+- CPPI-0005: `Context::solve` akzeptiert endliche Elevation im geschlossenen
+  Bereich `[-90,90]`; Ausserbereichswerte und
+  nicht endliche Werte werfen wie bisher eine Ausnahme. Signatur, sonstige
+  Eingaben, JSON-Rueckgabe, Bezugsgroessen, Ownership und Thread-Vertrag
+  bleiben unveraendert. Header, Register und
+  [H1-Modellfestlegung](../Dokumentationen/Modellfestlegung_Lookup.md)
+  fuehren den freigegebenen Vertrag.
+
+### 12.3 Auftrag, Ergebnis und Kompatibilitaet
+
+Entsprechend der Nutzerentscheidung werden alle Auftraege auf die explizite, streng
+aufsteigende Grundachse `[-90,-80,...,0,...,80,90]` umgestellt; der
+Beispielauftrag ebenso. Fuer die neue Generatorversion ist das bisherige
+`[0,10,...,90]` kein gueltiger Auftrag mehr und wird mit einer eindeutigen
+Meldung zur erforderlichen Umstellung abgelehnt, nicht still erweitert.
+Andere Raster, Duplikate, nicht endliche oder ausserhalb `[-90,90]`
+liegende Werte werden sichtbar abgelehnt. Die bestehende
+Rechenplanbegrenzung ist anhand der **tatsaechlich erweiterten Ausgabeachse**
+vor der teuren Rechnung zu pruefen.
+
+Als Anfangskandidat fuer zusaetzliche negative Stuetzstellen dienen die
+negierten bisherigen positiven Verfeinerungsstellen einschliesslich -88.75.
+Das ergibt zunaechst 19 Basis- und 45 Ausgabeneigungen; 45 ist keine
+Akzeptanzgarantie. Nur Winkelstuetzstellen werden gespiegelt, niemals
+Kraefte oder Momente. Scheitert die direkte Zwischenpunktpruefung, sind
+Stuetzstellen begruendet zu ergaenzen oder die Ausgabe abzulehnen; Toleranzen
+duerfen nicht still gelockert werden.
+
+Die Parquet-Spalten, binary64-Werte und sechs Dateien bleiben unveraendert.
+`lookup.json`, `auftrag_ausgefuehrt.json` und `pruefbericht.json` muessen
+die tatsaechliche Basis- und Ausgabeachse, Winkelkonvention, Modellstand und
+Nachweise uebereinstimmend ausweisen. Die mit Core bestaetigte
+Lookup-`formatversion` ist `"3"`; die Parquet-`schema_version` bleibt `"1"`.
+Manifest und Vertrag nennen explizit signed Domaene, Segelhals als
+Geschwindigkeits-/Reynolds- und Momentenbezug,
+`Re_ref = |v_rel| * c_ref / nu`, `q = 0.5 * rho * |v_rel|^2` und lineare
+Interpolation in `log(Re)` nur zwischen vorhandenen Stuetzstellen.
+Ausserhalb der manifestierten Beta- oder Re-Domaene wird mit Anfrage und
+vorhandener Domaene diagnostiziert; kein Spiegeln, Klemmen oder
+Extrapolieren. Aeltere Lookup-Formatversionen sind keine kompatiblen
+Eingaben und erhalten keine Legacy-Implementierung.
+
+Die vorhandenen alten Lookups werden nach Nutzerentscheidung verworfen und
+fuer die umgestellten Auftraege neu erzeugt; sie werden nicht gespiegelt,
+umetikettiert oder als vollstaendige neue Lookups weiterverwendet.
+`create-only` allein reicht dafuer nicht: Es ueberspringt bereits vorhandene
+Lookups. Die geplante Neuerzeugung verwendet `overwrite` oder einen neuen
+Arbeitsort und prueft anschliessend die tatsaechliche Achse. Vor dem Austausch
+bleibt der alte Stand bei Rechenfehler erhalten; Fehlversuche werden nicht
+als erfolgreiche Erneuerung gemeldet. Produktive Modellauftraege und Lookups liegen im separaten Modelle-Repository.
+Vorhandene Lookups werden mit der festgelegten atomaren `overwrite`-Semantik
+erst nach erfolgreicher Neuberechnung ersetzt. Nach Austausch den Aerodynamik-Fingerprint auf Wunsch ausschliesslich
+ueber die bestehende SegelPhysik-Core-API aktualisieren; die ganze
+`modells/aerodynamics`-Struktur eines Modells ist betroffen.
+
+### 12.4 Bestaetigter Core-Konsumentenvertrag
+
+Die Core-Bestaetigung vom 14.11.2026 umfasst die Richtung und alle vier
+folgenden Details. Die Umsetzung eines Core-Lookup-Lesers oder eines
+Segelkraftpfads wird damit nicht behauptet; diese Aenderung setzt keinen
+Code im separaten Core-Repository voraus.
+
+| Vertragspunkt | Bestaetigte Regel |
+|---|---|
+| Lokale Geschwindigkeit und Reynolds-Zahl | Referenzpunkt ist der Segelhals/Lookup-Momentenursprung. `v_rel` wird dort als Umgebungswind minus Starrkoerpergeschwindigkeit aus Translation und `omega x (r_H-r_CG)` bestimmt. `Re_ref = |v_rel| * c_ref / nu`; `q = 0.5 * rho * |v_rel|^2` verwendet dieselbe Geschwindigkeit. Uniformes Feld am Referenzpunkt; relevante Windgradienten oder Segelverformung liegen ausserhalb dieses Einpunktmodells. |
+| Re-Stuetzstellen und Interpolation | Die manifestierte Re-Achse ist massgeblich. Zwischen benachbarten Stuetzstellen wird linear in `log(Re_ref)` interpoliert. Ausserhalb der tatsaechlichen Domaene erfolgt eine Diagnose mit Anfrage und vorhandener Achse, keine Extrapolation. |
+| Moment und Angriffspunkt | Lookup-Kraft und vollstaendiges CM um den Hals werden mit `q*S` bzw. `q*S*c_ref` skaliert. Transformation: `F_W = R F_H`, `M_O,W = R M_H + (r_H-r_O) x F_W`. Der resultierende Angriffspunkt/Restmoment ist keine Ersatzberechnung fuer das Gesamtmoment. Summen oder Einzelbeitraege, nie beide doppelt, gehen in die Bilanz ein. |
+| Lookup-Versionierung | Neue Lookup-Manifestversion `"3"` bei unveraenderter Parquet-Schemaversion `"1"`. Manifestachsen und signierte Windkonvention sind explizit. Aeltere Lookup-Formatversionen werden nicht als Version 3 interpretiert; keine Legacy-Unterstuetzung. |
+
+Fuer nicht null lokale Stroemung `v_rel` gilt:
+Windherkunft `h = -v_rel / ||v_rel||`,
+`beta = atan2(h_z, hypot(h_x,h_y))`,
+`alpha = atan2(h_y,h_x)`; die Geschwindigkeit selbst bleibt fuer q und Re
+erhalten. Ein Nullvektor hat keine Windrichtung und wird nicht in einen
+beliebigen Tabellenwinkel umgewandelt, sondern mit einer Diagnose abgelehnt.
+Am Pol sind Winkel und Interpolation azimutunabhaengig; falls
+die Datenstruktur einen Azimutindex verlangt, darf ein kanonischer Index
+nur fuer den Tabellenzugriff dienen und keine azimutabhaengige Physik
+einfuehren.
+
+### 12.5 Abnahme
+
+Konkrete Tests, Messgroessen, Reihenfolge und Abbruchbedingungen stehen in
+Abschnitt 10 des Umsetzungsplans. Numerische und Integrationstests sind verpflichtend;
+eine physikalische Validierung anhand von Messdaten wird nicht verlangt und
+bleibt als offen gekennzeichnet. Die fehlende physikalische Validierung darf
+zu keiner Zeit die Nutzbarkeit der Modelle einschraenken und ist kein
+Freigabe- oder Laufzeitblocker. Die bestehende Kennzeichnung als nicht
+physikalisch validiertes Ingenieurmodell bleibt transparent. Fehler der
+verpflichtenden Software- und Numerikpruefungen werden weiterhin ausdruecklich
+gemeldet; sie werden nicht wegen der offenen Validierung unterdrueckt.
+Ein Testerfolg ersetzt keine physikalische Validierung.
+
+## 13. Vorbereitetes Segelmodell fuer lokale Windfelder
+
+Stand: 15.11.2026.
+
+**Status: am 15.11.2026 auf ausdruecklichen Nutzerauftrag finalisiert.**
+Der zugehoerige
+[Umsetzungsplan](../Umsetzungsplaene/Entwurf_Lookup_Generator.md#11-vorbereitetes-segelmodell-fuer-lokale-windfelder)
+ist die einzige Arbeitsplanung fuer diesen Folgeschritt. Finalisierung
+bedeutet weder Implementierungsauftrag noch bestandene Nachweise.
+Die Herkunftsentscheidungen stehen in der
+[Entwurfspunkteliste](Entwurfspunkte/Lookup_Generator.md#erweiterung-vorbereitetes-segelmodell-fuer-lokale-windfelder-15112026).
+Die ausdruecklich entschiedene spaetere Abloesung des bisherigen
+Lookup-Generators und der Schutz bereits erzeugter Dateien sind in 13.7
+und 13.12 geregelt.
+
+### 13.0 Finale Anforderungen
+
+| Kennung | Pruefbares Ergebnis |
+|---|---|
+| A-S-00043 | Ein Einzel-Segelmodell aus gueltiger Kontur, Profilen, Numerik und expliziten Modellparametern erzeugen; keine Segelinterferenz behaupten (13.1/13.2). |
+| A-S-00044 | Segelfestes rechtshaendiges System mit Halsursprung, X zum Bug, Y Backbord, Z oben und dokumentierten SI-Einheiten verwenden (13.3). |
+| A-S-00045 | Gesamte Konturhoehe in `ceil(H/0.25 m)` gleich hohe Streifen teilen und tatsaechliche Kontur- und Profilverlaeufe integrieren (13.3). |
+| A-S-00046 | Abfragepunkte bei halber Streifenhoehe und Viertelsehne eindeutig ausgeben; bei nicht eindeutig bestimmbarer Sehne mit Diagnose abbrechen (13.3). |
+| A-S-00047 | Windvektoren zwischen Abfragepunkten hoehenlinear interpolieren, ausserhalb den naechsten Vektor konstant verwenden (13.7). |
+| A-S-00048 | Geometrieabhaengige H1-Kopplungsmatrizen 32/48/64 und lokale windabhaengige rechte Seite nach 13.8 erzeugen und loesen; Normalbetrieb mit 48 Moden. |
+| A-S-00049 | Winkelnaht und lokale horizontale Nullgeschwindigkeit nach den festgelegten stetigen Regularisierungen behandeln (13.8). |
+| A-S-00050 | Niedrig-Re-Grenzmodell nach 13.8 einsetzen; bei exakt null weder `log(0)` noch Division durch null auswerten. |
+| A-S-00051 | Gueltige Luftdatenbereiche explizit dokumentieren und fuer diese den lokalen Geschwindigkeitsbereich 0 bis 50 m/s abdecken; ungueltige Werte diagnostizieren (13.5/13.7/13.9). |
+| A-S-00052 | Fuer jeden Streifen gekoppelte dimensionale Kraft und vollstaendiges Moment um den Abfragepunkt im Segelsystem liefern (13.4/13.8). |
+| A-S-00053 | Einzelbeitraege, Streifen- und Gesamtlasten mit korrektem Momentenbezug und ohne Doppelzaehlung bilanziert nachweisen (13.4/13.10/13.11). |
+| A-S-00054 | Das Modell im separaten Ordner `Segelmodell` als versioniertes JSON-Manifest und Parquet/Zstandard-Tabellen gemaess 13.9 erzeugen. |
+| A-S-00055 | Tabellenfelder, eindeutige Schluessel, Fremdschluessel, Dimensionen, Einheiten, Matrixinhalte und Geometrieintegritaet nach 13.9 pruefen. |
+| A-S-00056 | Unbekannte Versionen, ungueltige Schemata, korrupte Dateien und abweichende SHA-256-Pruefsummen beim Laden sichtbar ablehnen (13.7/13.9/13.10). |
+| A-S-00057 | Vorhandene Modelle standardmaessig schuetzen und nur auf ausdrueckliche Option nach erfolgreicher Neuerzeugung ersetzen; Fehler/Abbruch nicht als Erfolg publizieren (13.7/13.9). |
+| A-S-00058 | CLI-Befehl `segelmodell` fuer Erzeugung und separaten nicht schreibenden Pruefaufruf bereitstellen; stdout/Fehlerverhalten nach 13.13. |
+| A-S-00059 | Versionierte typisierte C++-Bibliothek zum Laden, Abfragen und gekoppelten Berechnen nach 13.10 bereitstellen. |
+| A-S-00060 | Unveraenderliche Modelle parallel sicher nutzen; Datenbesitz, Lebensdauer, Streifen-IDs und typisierte Fehler nach 13.7/13.10 nachweisen. |
+| A-S-00061 | Direkte H1-Referenz fuer gueltige Gleichwindfaelle mit Faktor 4/48 im Gesamt- und Streifenvergleich innerhalb 0,1 % nach 13.7/13.11 einhalten. |
+| A-S-00062 | Streifenhalbierung bei gleichem Testwindfeld fuer Gesamt- und passend summierte Streifenlasten innerhalb 5 % nach 13.7/13.11 einhalten. |
+| A-S-00063 | Geschwindigkeiten 0 bis 50 m/s, Intervallmitten, Winkel, Gradienten, lokale Nullwinde, Naht und Pole nach 13.7/13.11 pruefen. |
+| A-S-00064 | Den Residualtest und die 32/48/64-Modenvergleiche nach 13.11 dokumentieren; numerische Fehler nicht als Erfolg darstellen. |
+| A-S-00065 | Physikalische Nichtvalidierung und fehlende Referenzen ausweisen; Messdaten nicht zur Laufzeit- oder Nutzungsbedingung machen (13.7). |
+| A-S-00066 | Alten Gesamtsegel-Lookup-Generator bei der Umsetzung abloesen; H1 als Berechnungsgrundlage und Referenz erhalten (13.7/13.12). |
+| A-S-00067 | Bereits vorhandene alte Lookup-Dateien und externe Modellordner nicht veraendern oder loeschen (13.7/13.12). |
+| A-S-00068 | Parquet-Tabellen bei identischen Eingaben und festgelegten Bibliotheks-/Codecversionen unabhaengig von der Workerzahl bytegleich erzeugen (13.7). |
+| A-S-00069 | Datenumfang, Ladezeit und Laufzeit pro Rechnung getrennt messen; keine unbelegten Leistungsgrenzen behaupten (13.7/13.11). |
+| A-S-00070 | Naht- und Polverhalten, lokaler Nullwind, Grenzmodelluebergang sowie gueltige und fehlerhafte Eingaben reproduzierbar pruefen (13.8/13.11). |
+| A-S-00071 | Ein globales CPU-Limit fuer die Erzeugung einhalten und geeignete GPU-Berechnungen nach dem bestehenden Ressourcenvertrag behandeln (13.13). |
+| A-S-00072 | Optionalen Aerodynamik-Fingerprint ausschliesslich ueber die bestehende Core-API aktualisieren; Standard `skip`, Fehler nach Publikation sichtbar melden (13.13). |
+
+### 13.1 Ziel und Abgrenzung
+
+Der Segelmacher bereitet aus der Beschreibung **eines** Segels ein kompaktes
+aerodynamisches Datenmodell fuer die spaetere Berechnung vor. Dieses
+enthaelt Geometrie, Profilkennwerte und Informationen zur Kopplung der
+Hoehenstreifen. Zur Laufzeit werden lokale scheinbare Windvektoren
+verarbeitet und daraus **gekoppelt** Lasten des gesamten Segels berechnet.
+
+Das ist eine Erweiterung von H1, keine Umformatierung der vorhandenen
+Gesamtsegel-Lookups. Vollstaendige Kraftloesungen fuer alle Kombinationen
+von Windprofilen werden nicht vorberechnet. Insbesondere duerfen fertige
+Streifenlasten aus Gesamtsegel-Lookups mit unterschiedlichen gleichfoermigen
+Windbedingungen nicht als Ersatz fuer eine gekoppelte Loesung gemischt
+werden. Die Profilkennwerte sind in 13.8/13.9 festgelegt.
+
+Der Segelmacher verantwortet die Modellerzeugung und das Verfahren fuer die
+gekoppelte Streifenberechnung. Der separate Simulations-Core bestimmt den
+lokalen scheinbaren Wind, ruft das Verfahren auf und bilanziert die
+zurueckgegebenen Lasten im Bootsmodell. Dessen Implementierung,
+Bootsbewegung, Windfelder und GUI sind nicht Bestandteil dieser Spezifikation.
+Keine aerodynamische Interferenz zwischen mehreren Segeln wird zugesagt.
+
+### 13.2 Eingaben und vorzubereitende Daten
+
+Eingaben sind eine gueltige Segelgeometrie mit Kontur und Profilstationen
+sowie die fuer das gewaehlte Verfahren ausdruecklich benoetigten Numerik-,
+Modell- und Gueltigkeitsparameter. Herkunft, Modellannahmen und
+Eingabestand sind im erzeugten Modell nachvollziehbar zu machen.
+
+Das Datenmodell muss mindestens die fuer folgende Aufgaben benoetigten
+Informationen bereitstellen:
+
+- Segelidentitaet, Koordinaten- und Einheitenkonventionen, Bezugsgroessen
+  einschliesslich Referenzflaeche und Referenzlaenge sowie Modellversion;
+- geometrische Grenzen, stabile Zuordnung und Wind-Abfragepunkt jedes
+  Streifens sowie die fuer Kraft und Moment benoetigte Streifengeometrie,
+  Flaechenanteile, Profile, Woelbung und Verwindung;
+- lokale Profilkennwerte und die zugehoerigen Modellparameter und
+  Gueltigkeitsbereiche; bei Tabellen zusaetzlich Achsen, Zuordnung und
+  Interpolationsregeln;
+- vorberechnete geometrieabhaengige Kopplungsinformationen, etwa eine
+  Matrix oder deren Faktorisierung, mit dokumentierter Bedeutung,
+  Dimension und Zuordnung der Freiheitsgrade;
+- die fuer die Bestimmung von Einzelkraeften und vollstaendigen Momenten
+  erforderlichen Ansatzpunkte und Momentenparameter.
+
+Die Kopplungsdaten sind keine vorab berechnete Kraftloesung und duerfen
+nicht die Gueltigkeit einer fuer alle Windprofile konstanten Loesung
+voraussetzen. Das festgelegte Verfahren und die vorzubereitenden
+Tabellenfelder stehen in 13.8 und 13.9; das bestehende Lookup-Schema ist
+nicht das neue Datenschema.
+
+### 13.3 Segelkoordinaten und Streifen
+
+Verwendet wird ein rechtshaendiges segelfestes Koordinatensystem mit Ursprung
+im Segelhals. In neutraler Einbaulage zeigt +X zum Bug, +Y nach Backbord und
++Z nach oben. Das System dreht sich mit dem Segel. Alle im Datenmodell und
+an der Laufzeitschnittstelle verwendeten Punkte und Vektoren sind diesem
+System eindeutig zugeordnet; Laengen werden in Metern angegeben.
+
+Die Hoehe reicht vom tiefsten Punkt der gesamten Segelkontur bis zur
+hoechsten Segelspitze; beim Optimisten gehoert die Spitze an der Spriet dazu.
+Fuer die vereinbarte Einteilung gilt bei positiver Hoehe H:
+
+`N = ceil(H / 0.25 m)`, `Streifenhoehe = H / N`.
+
+Diese Aenderung von zuvor 0,5 m wurde am 15.11.2026 ausdruecklich
+beauftragt. Sie ersetzt die fruehere Einteilung, nicht die 5-%-Grenze.
+
+Die N horizontalen Streifen sind gleich hoch und hoechstens 0,25 m hoch.
+Beispiel: 4,2 m ergeben 17 Streifen zu je etwa 0,247 m. Jeder Streifen
+wird mit der tatsaechlichen Kontur verschnitten; ein schraeges Unterliek
+kann nur einen Teil eines Streifens enthalten. Spitzen werden nicht
+abgeschnitten. Der Wind-Abfragepunkt liegt auf halber Streifenhoehe bei
+einem Viertel der dortigen Sehne, vom vorderen Sehnenende aus gemessen.
+Streifen-ID, Hoehenbereich und Abfragepunkt muessen eindeutig exportiert
+werden.
+
+Die Core-Rueckmeldung weist auf moegliche Probleme bei stark schraegem
+Unterliek und dem Sehnenschnitt in Streifenmitte hin. Eine schraege Kante
+allein belegt noch keinen fehlenden Schnitt: Das ist anhand der tatsaechlich
+zulaessigen Konturen und der Hoehenfestlegung zu pruefen. Fehlt eine
+eindeutig bestimmbare Sehne, ist die Modellerzeugung mit eindeutiger
+Diagnose abzubrechen; ein stiller Ersatzpunkt ist nicht zulaessig.
+Degenerierte oder mehrteilige Schnitte und ihre Pruefbarkeit sind in der
+Verfahrensausarbeitung zu beruecksichtigen. Die bisherige H1-Implementierung
+verlangt fuer ihren Horizontalschnitt ein zusammenhaengendes Intervall.
+
+Das aktuelle H1-Raster fuegt Kontur- und Profilstationshoehen als Grenzen
+ein und unterscheidet sich damit vom vereinbarten gleichmaessigen Raster.
+Kontur- und Profilverlaeufe duerfen **innerhalb** eines festen
+Ausgabestreifens fuer die Integration an Konturknicken und Profilstationen
+intern unterteilt werden. Ausgabestreifen und Wind-Abfragepunkte bleiben
+unveraendert. Die Umsetzung und ihr Nachweis stehen noch aus.
+
+### 13.4 Laufzeitvertrag aus Sicht des Segelmachers
+
+Das vorbereitete Modell und das in 13.8 festgelegte Berechnungsverfahren
+nehmen fuer jeden exportierten Streifen einen scheinbaren lokalen
+Stroemungsvektor in m/s entgegen, der **in Stroemungsrichtung** zeigt und
+im Segelsystem angegeben ist. Hinzu kommen Luftdichte und kinematische
+Viskositaet mit eindeutig dokumentierten SI-Einheiten. Der aufrufende Core
+ist fuer die Beruecksichtigung von Windprofil und Bewegungen verantwortlich;
+der Segelmacher berechnet daraus nicht selbst das Boots-Windfeld.
+
+Die Ausgabe umfasst fuer jede Streifen-ID eine Kraft in N und das
+vollstaendige Moment in Nm um den zugehoerigen Wind-Abfragepunkt, jeweils
+im Segelsystem. Die Lasten ergeben sich aus der gekoppelten Loesung fuer
+das gesamte Segel, nicht aus unabhaengigen Streifenrechnungen.
+
+Optionale Einzelbeitraege fuer die Darstellung sind getrennt von den
+Streifensummen gekennzeichnet. Bei einer Bilanz duerfen Streifensummen und
+die darin enthaltenen Einzelbeitraege nicht doppelt addiert werden.
+Fuer einen anderen Bezugspunkt O gilt mit Abfragepunkt P:
+`M_O = M_P + (P - O) x F`, nach einer einheitlichen Koordinatentransformation.
+
+Der neue Daten- und Laufzeitvertrag ist gesondert zu versionieren.
+Datenschema und Fehlerkategorien stehen in 13.9/13.10; konkrete
+Funktionssignaturen werden vor ihrer Implementierung festgelegt und
+registriert. Die Core-Bestaetigung bezieht sich auf die Zielrichtung,
+nicht auf bereits vereinbarte konkrete Signaturen. Der vorhandene
+oeffentliche H1-Vertrag wird hier nicht veraendert.
+
+### 13.5 Windbereich, Modellgrenzen und Fehler
+
+Ziel ist die vollstaendige Unterstuetzung lokaler scheinbarer
+Windgeschwindigkeiten von 0 bis 50 m/s. Bei ueberall exakt null Wind sind
+im quasistationaeren Modell alle Kraefte und Momente null. Bei lokalem
+Nullwind einzelner Streifen ist der Nullvektor als Eingabe vorzusehen; die
+gesamte gekoppelte Loesung und ihr Grenzuebergang sind nachzuweisen. Ein
+Nullvektor am Abfragepunkt bedeutet nicht automatisch eine verschwindende
+Streifenlast: An anderen Integrationspunkten des Streifens kann nach der
+Windinterpolation Wind wirken. Am einzelnen Integrationspunkt mit exakt
+null lokalem Wind ergibt die Regularisierung aus 13.8 jedoch auch null
+induzierte Geschwindigkeit und null lokalen Kraft- und Momentenbeitrag.
+Dies ist eine Modellgrenze und kein Nachweis, dass dort real keine
+Kopplungslast auftreten kann. Falls eine Berechnung nicht
+moeglich ist, muss sie sichtbar diagnostiziert werden; dies ersetzt nicht
+den geforderten Nachweis des Zielbereichs.
+
+Reynolds-Zahlen sind fuer das zu spezifizierende Verfahren aus lokaler
+Geschwindigkeit, passender Bezugslaenge und Viskositaet abzuleiten. Fuer
+verwendete Tabellen erfolgt Interpolation ausschliesslich innerhalb der
+manifestierten Gueltigkeitsbereiche, zwischen Reynolds-Stuetzstellen
+linear in `log(Re)`. Ausserhalb wird diagnostiziert, nicht geklemmt oder
+extrapoliert. Fuer `Re = 0` ist keine `log(Re)`-Interpolation definiert.
+Wie Null und der Bereich nahe null ohne unzulaessige Extrapolation
+behandelt werden, ist als Teil des Modells nachzuweisen.
+
+Das bestehende H1 verlangt lokale Reynolds-Zahlen im expliziten Modellbereich
+und kann damit nicht unveraendert die geforderte Umgebung von null
+abdecken. Ein Grenzmodell ist in 13.8 festgelegt; seine
+Stetigkeit, Grenzen und physikalische Eignung sind noch nachzuweisen.
+Ungueltige Eingaben, fehlende oder inkonsistente Streifenvektoren,
+unbekannte oder beschaedigte Modelle, numerische Fehler und nicht
+konvergente Loesungen duerfen kein erfolgreiches Ergebnis vortaeuschen.
+
+### 13.6 Erzeugung und Nachweise
+
+Der Generator prueft Geometrie, Parameter und Modellvoraussetzungen,
+bereitet die Daten vor und dokumentiert ihre Zuordnung, Einheiten,
+Gueltigkeit, Version und den Nachweisstand. Ein unvollstaendiges oder
+fehlerhaftes Modell darf nicht als erfolgreich veroeffentlicht werden.
+Format, Integritaet, Speicherung und Veroeffentlichungsschutz sind in
+13.7 und 13.9 festgelegt; ihre praktische Umsetzung und Pruefung stehen aus.
+
+Verbindliche Abnahme nach den festgelegten Verfahren und Testfaellen:
+
+| Nachweis | Besprochener Zielwert / Inhalt |
+|---|---|
+| Gleichfoermiger Wind | Reproduktion des direkten H1-Ergebnisses innerhalb 0,1 %, soweit H1 gueltig ist; Gesamt- und vergleichbare Streifenlasten nach Abschnitt 13.7. |
+| Hoehenraster | Jeden Streifen halbieren; Gesamtlasten und vergleichbare Streifenlasten hoechstens 5 % Abweichung. Je zwei feine Streifen fuer den Vergleich zusammenfassen und ihre Momente zuvor auf denselben Punkt uebertragen. |
+| Bezugs- und Absoluttoleranzen | Vektornorm, maximaler Staudruck und jeweilige Referenzflaeche, fuer Momente zusaetzlich `c_ref`; Prozenttoleranz plus 10^-9 N beziehungsweise 10^-9 Nm nach Abschnitt 13.7. |
+| Windbereich | 0; 0,001; 0,01; 0,1; 0,5; 1; 5; 10; 20; 30; 40; 50 m/s sowie Zwischenwerte, Windgradienten und unterschiedliche Richtungen ueber die Hoehe. Mindest-Testsegel, Winkel und Zwischenwerte siehe Abschnitt 13.7. |
+| Null und Fehler | Vollstaendiger Nullwind, lokaler Nullwind, Grenzuebergaenge und erwartete Diagnosen; keine stillen Ersatzwerte. |
+| Kraft und Moment | Einzelbeitraege, Streifensummen und Gesamtresultierende stimmen nach Bezugspunkttransformation ueberein; keine Doppelzaehlung. |
+| Datenmodell | Erzeugung, versionierter Lesezugriff, Zuordnung, Datenintegritaet und sichtbare Ablehnung ungueltiger Daten; konkrete Schema- und Formatpruefungen nach deren Festlegung. |
+
+Fuer Optimist, 420 und Folkeboot sind die 0,1-%-H1-Vergleiche im
+gueltigen H1-Bereich sowie die 5-%-Rasterhalbierung anhand archivierter,
+hashverknuepfter Berichte bestanden; die vollstaendige Matrix und ihre
+Grenzquotienten sind im
+[Umsetzungsplan](../Umsetzungsplaene/Entwurf_Lookup_Generator.md)
+dokumentiert. Die Berichte enthalten keinen unabhaengigen Hash des
+damaligen Quellstands. Fuer 420- und Folkeboot-Fock liegen
+Stichprobentests, keine vollstaendige Matrix vor. Gleichfoermiger Wind und
+numerische Konvergenz pruefen die Uebereinstimmung bzw. Stabilitaet, sie
+sind keine physikalische Validierung. Die H1-Berechnungszeit von
+59,55 Mikrosekunden pro Basisaufruf aus der Opti-Messung gilt nicht als
+Laufzeit dieses neuen Verfahrens. Datenumfang und Simulationslaufzeit
+koennen erst nach Festlegung und Messung vergleichbar beurteilt werden.
+
+### 13.7 Nutzerentscheidungen vom 15.11.2026
+
+Die folgenden Nutzerentscheidungen sind Bestandteil der finalisierten
+Spezifikation, aber kein Nachweis einer technischen Erfuellung und kein
+Implementierungsauftrag:
+
+- **Umfang und Bestand:** Der bisherige Gesamtsegel-Lookup und seine
+  Erzeugung sollen bei einer spaeter beauftragten Umsetzung entfallen.
+  H1 bleibt Ausgangspunkt fuer das erweiterte Berechnungsverfahren und
+  Vergleichsreferenz. Bereits erzeugte alte Lookup-Dateien bleiben
+  unangetastet, auch in externen Modellordnern. Die bisherigen
+  freigegebenen Anforderungen sind in 13.12 nachvollziehbar zugeordnet
+  und bleiben als Historie erhalten.
+- **Kopplung:** H1 fuer unterschiedliche lokale Windvektoren erweitern.
+  Das konkrete Verfahren und ein begruendetes stetiges Grenzmodell fuer
+  kleine Reynolds-Zahlen sind auszuarbeiten und nachzuweisen. Bei fehlender
+  Konvergenz wird ein Fehler gemeldet; ein bislang fehlender Nachweis fuer
+  den geforderten Bereich wird nicht als Erfolg dargestellt.
+- **Wind zwischen Abfragepunkten:** Die vom Core gelieferten Windvektoren
+  werden nach der Hoehe linear interpoliert. Oberhalb des obersten und
+  unterhalb des untersten Abfragepunkts wird jeweils dessen Windvektor
+  konstant verwendet.
+- **Ausgabe und Veroeffentlichung:** Das neue Modell liegt im eigenen
+  Unterordner `Segelmodell` neben der Auftragsdatei. Es besteht aus einem
+  versionierten JSON-Manifest und Parquet-Tabellen mit Zstandard und
+  endlichen binary64-Werten. Manifest und Datenvertrag nennen
+  Modell-/Eingabeversionen, Bibliotheks-/Codecversionen und Pruefsummen
+  aller Parquet-Dateien. Unbekannte Versionen oder fehlerhafte Pruefsummen
+  werden abgelehnt. Bei gleichen Eingaben und festgelegten Bibliotheks-
+  versionen sind die Tabellen unabhaengig von der Workerzahl bytegleich.
+  Vorhandene Modelle werden standardmaessig nicht ueberschrieben und nur
+  auf ausdrueckliche Option nach erfolgreicher Neuerzeugung ersetzt.
+  Der vorgesehene CLI-Befehl heisst `segelmodell`; ein separater
+  Pruefaufruf schreibt keine Ergebnisse.
+- **Gueltigkeit und Profilkennwerte:** Zulaessige Bereiche von Luftdichte
+  und kinematischer Viskositaet werden im Erzeugungsauftrag explizit
+  festgelegt und im Modell dokumentiert; Werte ausserhalb werden
+  diagnostiziert. Die Abdeckung 0 bis 50 m/s ist innerhalb der
+  festgelegten Bereiche nachzuweisen. Fuer tabellierte Profilkennwerte
+  werden Stuetzstellen adaptiv bestimmt und gegen direkte Rechnungen
+  geprueft. Das Gesamtziel von 0,1 % ist massgeblich; interne
+  Teiltoleranzen werden begruendet festgelegt. Eine Winkelachse wird
+  periodisch ueber die -180/180-Grad-Naht interpoliert und dort geprueft,
+  ohne Lasten zu spiegeln. Die log(Re)-Regel aus 13.5 bleibt bestehen.
+- **Laufzeitschnittstelle:** Eine versionierte, typisierte C++-Bibliothek
+  stellt die Rechnung bereit. Ein geladenes Modell ist unveraenderlich
+  und fuer parallele Aufrufe mit eigenen temporaeren Rechendaten geeignet.
+  Streifen-IDs sind innerhalb eines Modells eindeutig und bei identischer
+  Neuerzeugung stabil; fuer geaenderte Geometrie wird keine Stabilitaet
+  zugesagt. Typisierte Fehler enthalten Ursache und Kontext; ein Fehler
+  darf kein erfolgreiches Teilergebnis liefern. Eine ABI-Stabilitaet
+  ueber unterschiedliche Compiler und Standardbibliotheken wird nicht
+  zugesagt.
+- **Abnahme und Bezugsgroessen:** Fuer den H1-Vergleich gelten direkte
+  H1-Rechnungen mit Rasterfaktor 4 und 48 Traglinienmoden. Gesamtlasten
+  und vergleichbare Streifenlasten werden geprueft. Die Referenz wird an
+  den Ausgabestreifengrenzen aufgeteilt und die Referenzkonvergenz
+  nachgewiesen. Beim Vergleich grober und halbierter Streifen wird dasselbe
+  definierte Windfeld an den jeweiligen Abfragepunkten ausgewertet.
+  Fuer Kraft- und Momentenabweichungen wird jeweils die euklidische Norm
+  der Vektordifferenz verwendet. Als Bezuege gelten `q_max * S` fuer
+  Gesamtlasten und `q_max * S_i` fuer Streifenlasten; fuer Momente jeweils
+  zusaetzlich `c_ref`. `q_max` ist der maximale lokale Staudruck des
+  Vergleichsfalls, `S_i` die jeweilige Streifenflaeche. Zulaessig ist
+  jeweils Prozentgrenze mal Bezug plus `10^-9 N` beziehungsweise
+  `10^-9 Nm`; dies gilt fuer 0,1 % im H1-Vergleich und 5 % im
+  Rastervergleich.
+- **Testumfang:** Mindestens die vorhandenen rekonstruierten Segel von
+  Optimist, 420 und Folkeboot. Fuer gleichfoermigen Wind werden Azimute
+  von -180 bis +150 Grad in 30-Grad-Schritten und Neigungen
+  -90, -80, -60, -30, 0, 30, 60, 80 und 90 Grad sowie Zwischenpunkte an
+  Modelluebergaengen geprueft. Zusaetzlich zu den Geschwindigkeiten aus
+  13.6 ist die arithmetische Mitte jedes benachbarten Intervalls zu
+  testen. Mindestfaelle fuer Gradienten sind 1 bis 10 m/s ueber die Hoehe,
+  -45 bis +45 Grad bei konstantem Betrag, lokaler Nullwind sowie ein
+  kombinierter Geschwindigkeits- und Richtungsgradient; Gradienten werden
+  auch mit umgekehrter Richtung geprueft. Vergleiche mit H1 gelten nur,
+  soweit H1 fuer den jeweiligen Fall gueltig ist.
+- **Validierung und Leistung:** Fehlende physikalische Validierung mit
+  Messdaten ist sichtbar zu kennzeichnen, aber fuer sich genommen kein
+  Nutzungsblocker; die numerischen Pruefungen bleiben verpflichtend.
+  Datenumfang, Ladezeit und Laufzeit pro Berechnung werden gemessen;
+  verbindliche Leistungsgrenzen werden erst anhand dieser Ergebnisse
+  festgelegt.
+
+Die nachfolgenden technischen Festlegungen sind verbindliche
+Umsetzungsgrundlage, aber keine bereits nachgewiesenen Eigenschaften.
+
+### 13.8 Gekoppeltes Verfahren und Nullgrenzmodell
+
+**Status: festgelegt, fachlich und numerisch nicht nachgewiesen.** Ausgangspunkt ist
+die H1-Traglinie aus der [Modellfestlegung](../Dokumentationen/Modellfestlegung_Lookup.md).
+Die lineare Kopplungsmatrix ist geometrieabhaengig; die rechte Seite und
+die Lasten werden fuer jeden Windzustand neu berechnet. Das folgende
+Verfahren ist als konkrete Erweiterung zu pruefen, nicht als validierte
+Beschreibung realer Stroemungen zu verstehen.
+
+1. Das Modell speichert fuer `N = 32, 48, 64` die H1-Matrizen
+   `M[i,n] = sin(n*theta_i) * (4*H/(2*pi*c_i) + n/sin(theta_i))`,
+   `theta_i = pi*(i+0.5)/N`, `i = 0..N-1`, `n = 1..N`.
+   Die Hoehe ist `z_i = z_min + H*(1-cos(theta_i))/2`, `c_i` die
+   dortige Sehne. Ungueltige oder entartete Kollokationsgeometrie fuehrt
+   zur Diagnose. Normale Rechnung: 48 Moden; 32/64 dienen
+   Vergleichsrechnungen.
+2. Der lokale Stroemungsvektor wird nach 13.7 nach Hoehe interpoliert.
+   Fuer jeden Kollokationspunkt gilt `V_i = hypot(u_x,u_y)` in m/s.
+   Bei `V_i > 0` sei `phi_i = atan2(u_y,-u_x)` und
+   `g_i = 1-smoothstep(120 Grad,180 Grad,abs(phi_i))`. Es wird
+   `b_i = V_i * g_i * (phi_i + twist_i_rad - a0_i)` gebildet, mit
+   Winkelumrechnung in Radiant und denselben Fourierkonventionen wie H1.
+   Die Abblendung ist eine neue Annahme fuer gegenlaeufige lokale Winde:
+   Sie verhindert einen Sprung der rechten Seite an der +/-180-Grad-Naht.
+   Bei `V_i = 0` ist `b_i = 0`; es wird kein Winkel aus dem Nullvektor
+   bestimmt. Wie in H1 entfaellt die Traglinienloesung, wenn der
+   anliegende Anteil ueberall null ist.
+3. Die dimensionale Gleichung `M * B = b` wird mit pivotierter
+   Faktorisierung geloest; `B_n` hat die Einheit m/s. Fuer die
+   modale Zirkulation und induzierte skalare Geschwindigkeit gilt
+   `Gamma(z) = 2*H*sum(B_n*sin(n*theta))` in m^2/s und
+   `w(z) = sum(n*B_n*sin(n*theta)/sin(theta))` in m/s.
+   Die Auswertung an den Polen selbst ist gesondert grenzwertig zu
+   behandeln; es darf nicht durch null geteilt werden.
+4. Fuer die induzierte Richtung wird die horizontale lokale Richtung
+   `n = (u_y,-u_x,0)/V_xy` verwendet. Bei unterschiedlichen Richtungen
+   ist dies eine **neue Modellannahme**, keine aus H1 bewiesene
+   Wirbelgeometrie. Zur stetigen Behandlung lokal verschwindender
+   Horizontalgeschwindigkeit gilt mit `V_max = max_i(V_i)` ueber alle
+   Abfrage- und Kollokationspunkte und `epsilon = 0.01*V_max`:
+   fuer `V_xy >= epsilon` unveraendert `n`; fuer
+   `0 < V_xy < epsilon` wird `n` mit `smoothstep(V_xy/epsilon)`
+   multipliziert; bei `V_xy = 0` ist die Richtung null. Sind alle
+   Horizontalgeschwindigkeiten null, entfaellt die Traglinienloesung.
+   Die induzierte Geschwindigkeit lautet `u_ind = -w*n_reg`. Diese
+   Regularisierung ist Teil der Modellfestlegung und muss auch bei
+   wechselnden Windrichtungen und Grenzuebergaengen geprueft werden.
+5. Lokale Wind- und induzierte Geschwindigkeiten, lokale Reynolds-Zahl und
+   H1-Anteile fuer anliegende Stroemung, Abloesung, Flaechenimpuls,
+   Reibung und Profilmoment ergeben die dimensionierten Teilkraefte.
+   Wie bei H1 gilt fuer die Profilkennwerte
+   `Re = |u| * chord / nu` mit dem interpolierten, nicht induzierten
+   lokalen Stroemungsvektor; `u_ind` geht in die gebundene Kraft ein,
+   nicht in diese Reynolds-Zahl.
+   Die bestehende H1-Ueberblendung bei `abs(beta) = 60..80` Grad ist
+   lokal anzuwenden. Die gebundene Kraft wird mit der dimensionalen
+   Zirkulation und `rho * Gamma * dz * cross(u + u_ind, span)`
+   berechnet; H1-Gewichtung und Vorzeichenkonvention bleiben erhalten.
+   Integration und Momentenbildung nutzen die realen Ansatzpunkte.
+   Es wird kein einzelner globaler Staudruck fuer das ganze Windprofil
+   unterstellt.
+
+Fuer alle oben genannten Ueberblendungen bedeutet `smoothstep(a,b,x)`
+mit `t = clamp((x-a)/(b-a),0,1)` den Wert `t*t*(3-2*t)`;
+`smoothstep(t)` bezeichnet dieselbe Funktion auf dem Intervall `[0,1]`.
+Dieses Klemmen definiert ausschliesslich die Ueberblendungsfunktion und
+ist kein Klemmen von Eingaben auf einen gueltigen Modellbereich.
+
+Bei gleichfoermigem Wind mit nicht verschwindender
+Horizontalgeschwindigkeit und `abs(phi) <= 120 Grad` gilt
+`b = V_xy * b_H1` und damit `B = V_xy * A_H1`; die Regularisierung ist
+dort inaktiv. Bei den derzeitigen H1-Parametergrenzen ist fuer
+gleichfoermigen Wind jenseits von 120 Grad der anliegende Anteil null,
+so dass dort wie in H1 keine Traglinienloesung entsteht. Beides ist bei
+der Referenzpruefung ausdruecklich nachzuweisen. Diese algebraische
+Voraussetzung fuer die H1-Reproduktion ersetzt nicht den Vergleich aller
+ausgegebenen Kraft- und Momentenbeitraege. Insbesondere sind die
+Winkelnaht, gegenlaeufige lokale Winde, die Polnaehe und lokale
+Nullgeschwindigkeit auf Stetigkeit und Verfahrensgrenzen zu pruefen.
+
+**Festlegung fuer `0 <= Re < Re_min`:** `Re_min` und alle uebrigen
+H1-Parameter sind explizite Modelldaten. Bei `0 < Re < Re_min` ist
+eine eigene analytische Niedrig-Re-Schliessung zu verwenden, keine
+Tabellenextrapolation: mit `r = Re/Re_min` gilt
+`Cf_low = Cf_H1(Re_min)/sqrt(r)` und fuer die H1-Abrissverschiebung
+`delta_low = shift * (log10(Re_min/transition_re) + (r-1)/ln(10))`.
+Bei `Re >= Re_min` gelten die unveraenderten H1-Formeln. Die Formeln
+schliessen stetig an die jeweiligen H1-Werte an; die Abrissverschiebung
+hat dort auch dieselbe erste Ableitung. Fuer den Reibungsbeitrag ist die
+**dimensionale** Kombination mit dem quadratischen Staudruck auszuwerten:
+Sie geht bei festem Profil und `|u| -> 0` gegen null. Bei exakt null
+lokalem Wind sind die vom lokalen Wind angetriebenen Impuls- und
+Reibungsbeitraege null; `log(0)` und `1/sqrt(0)` werden nicht
+ausgewertet. Die gekoppelte gebundene Last wird separat gemaess der
+Gesamtloesung behandelt.
+
+Das ist eine explizite Ingenieurschliessung, keine Behauptung der
+Gueltigkeit der H1-Reibungsformel im Kriechstroemungsbereich. Ob sie
+physikalisch plausibel und ausreichend stetig ist und ob sie alle
+vereinbarten 0--50-m/s-Faelle sowie Toleranzen erfuellt, ist offen.
+Bei ungueltiger Luftdichte/Viskositaet, nicht-endlichen Eingaben,
+singulaerer Matrix, nicht-endlicher Loesung oder fehlendem Nachweis darf
+kein erfolgreiches Ergebnis vorgetaeuscht werden.
+
+### 13.9 Datenmodell und Erzeugung
+
+Ausgabe im Ordner `Segelmodell`, unabhaengig vom bisherigen `LookUp`.
+Alle aufgelisteten Felder sind Pflichtfelder; `f64` bezeichnet endliches
+IEEE-binary64, `i32` einen nichtnegativen 32-Bit-Integer und `text`
+UTF-8. Vektoren werden als getrennte x/y/z-Spalten gespeichert. Die
+folgenden Namen und Typen bilden die neue Formatversion `1`; sie ist
+unabhaengig von der alten Lookup-Manifestversion `3`.
+
+| Datei | Schluessel und Daten |
+|---|---|
+| `manifest.json` | Formatkennung `segelmodell`, separate Schema- und Modellversion, Segel-ID, `S_m2`, `c_ref_m`, `z_min_m`, `hoehe_m`, Achsen- und Stroemungskonvention, H1- und Grenzmodellparameter, Dichte-/Viskositaetsbereiche, Geschwindigkeitsbereich, Anzahl der Streifen, Modenzahlen und Tabellenbeschreibungen mit Zeilenzahl, Schema, Codec und SHA-256. Eingabe- und Geometriehashes, Erzeuger-/Bibliotheksversionen sowie Numerik- und Validierungsstatus sind enthalten. |
+| `streifen.parquet` | `streifen_id:i32`, `z_min_m:f64`, `z_max_m:f64`, `flaeche_m2:f64`, `abfrage_x_m:f64`, `abfrage_y_m:f64`, `abfrage_z_m:f64`; eindeutig nach `streifen_id` sortiert. Die Flaeche ist die tatsaechliche ebene Konturflaeche im Streifen, nicht eine Rechtecknaeherung. |
+| `quadratur.parquet` | `streifen_id:i32`, `punkt_id:i32`, `z_m:f64`, `dz_m:f64`, `chord_m:f64`, `m:f64`, `p:f64`, `twist_rad:f64`, `a0:f64`, `a1:f64`, `a2:f64`, `viertel_x_m:f64`, `viertel_y_m:f64`, `viertel_z_m:f64`; Schluessel `(streifen_id,punkt_id)`. Zeilen beschreiben interne Hoehenintegrationspunkte und ihre H1-Fourier-Profilkennwerte. |
+| `flaechenpunkte.parquet` | `streifen_id:i32`, `punkt_id:i32`, `teil_id:i32`, `position_x_m:f64`, `position_y_m:f64`, `position_z_m:f64`, `normal_x:f64`, `normal_y:f64`, `normal_z:f64`, `flaeche_m2:f64`; Schluessel `(streifen_id,punkt_id,teil_id)`. Fuer jeden Hoehenpunkt werden die vier H1-Sehnenbeitraege mit Flaechenmetrik und Einheitsnormalen gespeichert. |
+| `kollokation.parquet` | `moden:i32`, `index:i32`, `z_m:f64`, `chord_m:f64`, `twist_rad:f64`, `a0:f64`; Schluessel `(moden,index)`, fuer jede der drei Modenzahlen vollstaendig und in Indexreihenfolge. |
+| `kopplung.parquet` | `moden:i32`, `zeile:i32`, `spalte:i32`, `wert:f64`; Schluessel `(moden,zeile,spalte)`. Fuer jede Modenzahl wird die vollstaendige dimensionslose Matrix aus 13.8 in Zeilenreihenfolge abgelegt. Pivotierung und Faktorisierung entstehen beim Laden aus dieser Matrix; sie sind keine Kraftloesung. |
+
+`punkt_id` ist je Streifen eindeutig. Jeder Flaechenpunkt verweist auf
+genau einen Quadraturpunkt; `teil_id` ist 0 bis 3. Hoehenintervalle sind
+geordnet, lueckenlos und ueberlappungsfrei; Abfragepunkte liegen in der
+jeweiligen Streifenmitte. Die Summe der ebenen Streifenflaechen ergibt
+`S_m2` innerhalb einer explizit dokumentierten numerischen
+Flaechentoleranz `1e-10 * max(1 m^2, S_m2)`. Einheitsnormalen haben
+eine Betragstoleranz von `1e-10`. Reale gekruemmte Teilflaechen aus der H1-Metrik sind
+davon zu unterscheiden. Fuer Matrizen sind Dimensionen und Indizes
+vollstaendig zu pruefen; bei doppelten Schluesseln, fehlenden Referenzen,
+nicht-endlichen Zahlen, nicht normierten Normalen, ungueltigen
+Sehnen/Flaechen, fremden Versionen oder beschaedigten Dateien wird
+abgebrochen.
+
+Das Manifest ist ein UTF-8-JSON-Objekt mit folgenden Pflichtfeldern:
+`formatkennung = "segelmodell"`, `formatversion = "1"`,
+`modell_version = "H1-lokal-1"`, `segel_id` und die Objekte
+`geometrie`, `konventionen`, `gueltigkeit`, `parameter`, `tabellen`,
+`eingaben`, `erzeuger` und `nachweise`. `geometrie` enthaelt
+`S_m2`, `c_ref_m`, `z_min_m`, `hoehe_m`, `streifenanzahl` und
+`modenzahlen = [32,48,64]`; `konventionen` beschreibt das segelfeste
+System und den Stroemungsvektor. `gueltigkeit` enthaelt
+`geschwindigkeit_m_s = [0,50]`, `dichte_kg_m3` und `viskositaet_m2_s`
+als jeweils aufsteigende geschlossene Bereiche mit endlichen Grenzen;
+die Grenzen von Dichte und Viskositaet sind positiv. `parameter`
+enthaelt alle H1-Parameter unter den Namen des Erzeugungsauftrags und
+die in 13.8 festgelegten Regularisierungsparameter mit Einheiten.
+`tabellen` ist ein Objekt, dessen Schluessel genau die fuenf in der
+Tabelle genannten Dateinamen sind. Jeder Wert enthaelt `zeilen` als
+nichtnegative Ganzzahl, `schema_version = "1"`, `codec = "ZSTD"`,
+`sha256` als 64 hexadezimale Zeichen und `schema` als geordnete Liste
+von Objekten mit `name`, `typ` und `einheit`; dimensionslose Felder
+haben `einheit = "1"`. Die Eintraege stimmen mit den tatsaechlichen
+Parquet-Spalten und der Tabelle oben ueberein. `eingaben` enthaelt fuer
+jede verwendete Eingabedatei Pfad und SHA-256, `erzeuger` die konkreten
+Werkzeug- und Bibliotheksversionen. `nachweise` weist ausgefuehrte,
+bestandene, fehlgeschlagene und nicht ausgefuehrte Pruefungen getrennt
+aus und kennzeichnet `physikalisch_validiert = false`.
+
+Der Auftrag legt Dichte- und Viskositaetsbereiche vor der Erzeugung
+explizit fest. Fuer die konkreten Quadratur- und Kollokationssehnen wird
+der worst case `Re = 50 m/s * chord_m / nu_min` geprueft. Ein Auftrag,
+der den expliziten oberen Modellbereich ueberschreitet, wird vor der
+Publikation diagnostiziert statt den 0--50-m/s-Bereich still einzuengen.
+
+Das Modell verwendet die analytischen H1-Profilkennwerte
+aus `quadratur.parquet` und benoetigt **keine** Winkel-/Re-Polartabelle.
+Sollte eine Tabelle spaeter fuer eine andere Schliessung erforderlich sein,
+ist deren Schema und adaptiver Fehlernachweis vor Verwendung gesondert
+festzulegen; die vereinbarte periodische Winkel- und log(Re)-Interpolation
+aus 13.7 gilt dann. Aus dem Fehlen einer Tabelle folgt keine Berechtigung
+zur Extrapolation von Tabellenwerten.
+
+Erzeugung: Eingaben pruefen, Kontur in gleich hohe Ausgabestreifen schneiden,
+Quadratur an Kontur- und Profilgrenzen intern unterteilen, Profilkennwerte
+und Matrizen erzeugen, Schema/Referenzen/Hashes und die geltenden
+Erzeugungspruefungen validieren. Erst nach Erfolg wird das Ergebnis aus
+einem eigenen Arbeitsordner veroeffentlicht; Abbruch oder Fehler ergeben
+kein erfolgreiches Modell. `create-only` ueberschreibt nichts, ein
+ausdruecklicher Austausch bewahrt das alte Modell bis zum erfolgreichen
+Austausch. Konkrete CLI-Flags und Plattformdetails folgen dem bestehenden
+Fehler- und Schutzvertrag, soweit auf dieses neue Produkt anwendbar.
+
+### 13.10 C++-Laufzeitschnittstelle
+
+Die folgenden Bezeichnungen beschreiben fachliche Operationen, keine
+konkreten C++-Exporte oder ABI-Signaturen:
+
+- `load_model(path)` prueft Schema, Version, Referenzen, Pruefsummen,
+  gleichmaessige Streifen nach 13.3 und Matrixloesbarkeit und liefert
+  einen unveraenderlichen Modellbesitzer. Aeltere Versuchsdaten mit der
+  ersetzten 0,5-m-Einteilung werden nicht als aktuelles Modell geladen.
+  Dateizugriffe finden beim Laden statt, nicht bei der einzelnen Rechnung.
+- `strip_points(model)` liefert fuer die Modelllebensdauer gueltige
+  Streifen-IDs und Abfragepunkte in m im segelfesten System. Fuer ein
+  neu erzeugtes Modell gilt die Einteilung `ceil(H / 0.25 m)` aus 13.3.
+- `solve(model, winds, rho, nu)` verarbeitet genau einen endlichen
+  Stroemungsvektor in m/s pro vorhandener Streifen-ID, Dichte in kg/m^3
+  und kinematische Viskositaet in m^2/s. Doppelte, fehlende oder unbekannte
+  IDs und Werte ausserhalb des manifestierten Bereichs sind Fehler.
+  Reihenfolge der Eingaben ist nicht massgeblich; die Ausgabe ist nach ID
+  geordnet.
+- Pro Streifen liefert die Rechnung einen Kraftvektor in N und den
+  vollstaendigen Momentenvektor in Nm um den zugehoerigen Abfragepunkt.
+  Ergebnisdaten gehoeren dem Aufrufer. Eine getrennte optionale Ausgabe
+  von Einzelbeitraegen enthaelt ID, Kraft, Ansatzpunkt und freies Moment;
+  Streifensummen und Einzelbeitraege duerfen nicht doppelt bilanziert werden.
+- Fehler sind typisiert: ungueltige Eingabe/ID, ungueltiges oder
+  inkompatibles Modell, Integritaets-/Lesefehler, ausserhalb des
+  Gueltigkeitsbereichs und numerischer Loesungsfehler. Der Fehler traegt
+  Ursache und Kontext, insbesondere betroffene ID und Wert/Bereich soweit
+  vorhanden. Im Fehlerfall gibt es kein erfolgreiches Teilergebnis.
+  Ein unveraenderliches Modell darf parallel genutzt werden; jede Rechnung
+  besitzt ihre temporaeren Daten. Der Core ist fuer die Transformation
+  und Bilanzierung um den Bootsmomentenbezug verantwortlich.
+
+Die konkreten C++-Signaturen, Typnamen und die Ownership-Darstellung sind
+vor ihrer Implementierung anhand dieses Vertrags festzulegen und mit
+eigenen CPPI-Kennungen in Register, Header und Vertragstests konsistent zu
+fuehren. Die Core-Rueckmeldung vom 15.11.2026 bestaetigt die Zielrichtung,
+nicht bereits konkrete Signaturen. Keine ABI-Zusage ueber unterschiedliche
+Compiler und Standardbibliotheken.
+
+### 13.11 Praezisierung der Nachweisfaelle
+
+- H1-Vergleich: fuer jeden in 13.7 bezeichneten Winkel- und
+  Geschwindigkeitsfall, dessen **alle** fuer H1 benoetigten lokalen
+  Reynolds-Zahlen in seinem Bereich liegen, werden direkte H1- und neue
+  Rechnung verglichen. Vorzeichen, Profile und Ausgabestreifen muessen
+  identisch sein; die H1-Referenz wird an den Ausgabestreifengrenzen
+  nachintegriert und deren Konvergenz belegt. Ausserhalb des H1-Bereichs
+  wird kein H1-Vergleich behauptet; diese Faelle erhalten gesonderte
+  Grenzmodelltests.
+- Rastervergleich: an allen Abfragepunkten beider Raster denselben
+  definierten kontinuierlichen Testwind auswerten. Je zwei feine
+  Streifenlasten mit vollstaendiger Momentenverschiebung auf den
+  Abfragepunkt des groben Streifens zusammenfassen. `q_max` ist das
+  Maximum von `0.5*rho*|u|^2` ueber alle Abfragepunkte **beider** Raster.
+  Die in 13.7 festgelegte Vektornorm und additive absolute Toleranz gelten
+  auch bei `q_max = 0`; es wird keine Division durch null verwendet.
+- Testgradienten aus 13.7 sind linear ueber die Hoehe zu definieren;
+  Richtungswerte beziehen sich bei beta 0 auf die H1-Windherkunft. Die
+  umgekehrten Faelle vertauschen obere und untere Endwerte. Lokaler
+  Nullwind wird an mindestens einem, nicht an allen Abfragepunkten
+  vorgegeben. Gegenlaeufige und den Azimut-Schnitt kreuzende Winde,
+  lokale horizontale Nullgeschwindigkeit bei vertikalem Wind sowie beide
+  Pole und beide Ueberblendungsgrenzen sind zusaetzlich zu testen.
+- Fuer die reproduzierbare Mindestmatrix `rho = 1.225 kg/m^3` und
+  `nu = 1.5e-5 m^2/s` verwenden; der Testauftrag muss beide Werte in
+  seinen expliziten Bereichen enthalten. Die Gradienten reichen ueber
+  die gesamte Konturhoehe: Betrag 1 nach 10 m/s bei Azimut 0 Grad;
+  Herkunftsazimut -45 nach +45 Grad bei Betrag 10 m/s; kombiniert beide
+  Verlaeufe. Die jeweils umgekehrten Faelle vertauschen die Endwerte.
+  Fuer lokalen Nullwind ein stetiges, stueckweise lineares Feld durch
+  die groben Abfragepunkte definieren: an einem inneren Punkt null, an
+  den anderen jeweils 5 m/s bei Azimut 0 und beta 0; beide Raster
+  werten dieses selbe Feld aus. Bei nur einem Streifen einen Nullpunkt
+  auf einem der beiden Konturenden waehlen.
+- Winkeluebergaenge bei +/-60 und +/-80 Grad Neigung, +/-120 Grad
+  `phi`, der +/-180-Grad-Naht sowie an den jeweils berechneten H1-
+  Abrissgrenzen exakt und beidseits mit `1e-6` Grad Abstand pruefen.
+  Die Grenze `Re_min` zusaetzlich bei relativen Abstaenden `1e-6`
+  untersuchen. Modellbedingte Abweichungen sind anhand der festgelegten
+  Kraft-/Momentenbezuege und nicht bloss anhand einzelner Winkelwerte
+  zu dokumentieren.
+- Numerische Loesung: relativer Rueckwaertsfehler
+  `||M*B-b||_inf / (||M||_inf*||B||_inf + ||b||_inf) <= 1e-10`;
+  bei verschwindendem Nenner muss der Residualvektor exakt null sein.
+  32/48/64-Modenvergleiche und die konkreten Integrationsraster werden
+  dokumentiert; das verbindliche Kraft-/Momenten-Ziel bleibt 0,1 %
+  gegen H1 und 5 % fuer den Streifen-Rastervergleich.
+- Grenzmodell: Uebergaenge an `Re_min` von beiden Seiten, Folgen von
+  positiven Geschwindigkeiten gegen null, exakt null, die H1-Gueltigkeits-
+  grenze sowie die vereinbarten 0--50-m/s-Testwerte und Intervallmitten
+  pruefen. Bei Reibung werden dimensionale Kraefte und Momente und nicht
+  der bei null singulaere dimensionslose Reibungsbeiwert verglichen.
+- Testbericht trennt bestandene numerische Pruefungen, fehlgeschlagene
+  Faelle mit Eingaben/Abweichung, noch nicht ausgefuehrte Tests und
+  fehlende physikalische Messreferenzen. Scheitert ein Pflichtnachweis,
+  bleibt die Abnahme offen; Toleranzen und Modellbereich werden nicht
+  stillschweigend eingeschraenkt.
+
+### 13.12 Abloesung des bisherigen Lookup-Generators
+
+Die Abloesung des bisherigen Gesamtsegel-Lookup-Generators geht auf die
+ausdrueckliche Nutzerentscheidung vom 15.11.2026 zurueck; sie ist nicht
+Bestandteil der urspruenglichen Core-Abstimmung. Der neue Generator
+ersetzt bei Umsetzung den alten Produktausgabepfad und dessen CLI-
+Erzeugung. Bestehende alte Lookup-Dateien bleiben unveraendert. H1,
+einschliesslich direkter Referenzrechnungen, bleibt fuer die neue
+Berechnung und den Vergleich erhalten. Uebergaenge und alte Kennungen
+werden nicht geloescht oder umnummeriert.
+
+| Bisherige Anforderungen | Entscheidung fuer diesen Folgeschritt |
+|---|---|
+| A-S-00001 bis A-S-00004 | Alter Lookup-Aufruf und Auftragshuellen werden durch A-S-00043 und A-S-00058 ersetzt; explizite Fehler, stdout/stderr-Trennung und Pruefbarkeit bleiben nach 13.13 erhalten. |
+| A-S-00005 bis A-S-00007 | Geometrie und Profile bleiben durch A-S-00043 bis A-S-00046 erfasst; die alte lokale-Re-Ablehnung wird fuer Niedrig-Re durch A-S-00050/A-S-00051 ersetzt. |
+| A-S-00008 bis A-S-00015 | Die H1-Grundlagen bleiben Referenz; fuer neue gekoppelte Lasten und deren Momentenvertrag gelten A-S-00048 bis A-S-00053. |
+| A-S-00016/A-S-00017 | Ressourcenvertrag bleibt durch A-S-00071 erhalten. |
+| A-S-00018/A-S-00019 | Bisherige Lookup-Raster- und Winkelzwischenpunktpruefung wird durch A-S-00061 bis A-S-00064 und A-S-00070 ersetzt. |
+| A-S-00020 bis A-S-00024 | Alte Tabellen-, Manifest- und Publikationsform werden durch A-S-00054 bis A-S-00058 und A-S-00068 ersetzt; A-S-00021 bleibt historisch ersetzt. |
+| A-S-00025 bis A-S-00030 | Einzel-Segel-Abgrenzung, unabhaengiger Core, Fehler-/Abbruchschutz und Nachweise bleiben durch A-S-00043, A-S-00057 bis A-S-00060 und A-S-00063 bis A-S-00067 erfasst. |
+| A-S-00031 bis A-S-00036 | Alte sechs Lookup-Dateien und deren Parquet-Schemata werden durch das separate Modellformat A-S-00054 bis A-S-00057 und A-S-00068 ersetzt. |
+| A-S-00037/A-S-00038 | Fingerprint- und Ausgabepolitik werden fuer den neuen Befehl durch A-S-00057 und A-S-00072 fortgefuehrt. |
+| A-S-00039 bis A-S-00042 | Signed H1 als direkte Referenz bleibt; die alte Lookup-Achse und Manifestversion werden durch das neue Modell und A-S-00061/A-S-00063/A-S-00070 ersetzt. |
+
+Die alten Anforderungen in Abschnitt 0 bleiben als Geschichte lesbar;
+bei Konflikten fuer das neue Produkt gilt Abschnitt 13. Eine Anwendung,
+Neuerzeugung oder Entfernung vorhandener externer Dateien wird durch
+diese Spezifikation nicht beauftragt.
+
+### 13.13 CLI, Ressourcen und Fingerprint
+
+`segelmodell --auftrag <Datei>` erzeugt das neue Produkt. Der separate
+`pruefen --auftrag <Datei>`-Aufruf prueft Eingaben, Geometrie und
+Ressourcen ohne Schreiben oder Publikation. `--max-prozessorzahl` begrenzt
+Erzeugungsworker global. Die bestehende Entscheidung ueber fachlich
+geeignete GPU-Batches und die Modi `aus`, `automatisch`, `erforderlich`
+bleibt erhalten; eine Funktion ohne geeigneten GPU-Batch muss nicht
+kuenstlich auf die GPU verlagert werden. Fehler und CPU-Fallback sind
+sichtbar, sofern fuer den jeweiligen Modus zulaessig.
+
+`--output-policy create-only|overwrite` hat den Standard `create-only`;
+bei vorhandenem Modell wird erfolgreich uebersprungen. `overwrite`
+ersetzt nur nach erfolgreich abgeschlossenem, geprueftem Neulauf und
+stellt den alten Stand bei Austauschfehler wieder her.
+`--fingerprint skip|update` hat den Standard `skip`. `update` verwendet
+ausschliesslich die bestehende SegelPhysik-Core-API fuer den Bereich
+Aerodynamik, auch nach `create-only`-Ueberspringen; andere Bereiche
+bleiben unveraendert. Ein Fingerprintfehler nach Publikation meldet Fehler
+und den bereits geschriebenen Modellordner, nicht einen erfolgreichen
+Gesamtablauf.
+
+Stdout ist genau ein Abschluss-JSON, Fortschritt und Diagnosen stehen auf
+stderr. Die vorhandenen Exitcode-Kategorien fuer Aufruf/Eingabe,
+Ressourcen, Rechnung, Ausgabe und Abbruch bleiben erhalten. Tests fuer
+Erzeugung, Austausch und Fingerprint verwenden isolierte Testverzeichnisse;
+es werden keine externen Produktivmodelle aktualisiert.

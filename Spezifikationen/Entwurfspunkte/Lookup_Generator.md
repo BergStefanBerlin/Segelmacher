@@ -1,7 +1,9 @@
 # Entwurfspunkte: Lookup-Generator
 
-Stand: 05.11.2026  
-Status: am 05.11.2026 durch ausdruecklichen Umsetzungsauftrag uebernommen.
+Stand: 15.11.2026
+Status der Ursprungsliste: am 05.11.2026 durch ausdruecklichen
+Umsetzungsauftrag uebernommen. Die Status der spaeteren Erweiterungen
+stehen in ihren jeweiligen Abschnitten.
 
 Diese Liste ergaenzt die
 [Spezifikation](../Spezifikation_Lookup_Generator.md).
@@ -46,3 +48,40 @@ Noch keine A-S-, U-S- oder CPPI-Kennungen.
 | IDEE-S-00007 | Angenommen; A-S-00031 und A-S-00033 | Genau sechs Ergebnisdateien, drei Parquet-Tabellen, Manifest und Berichte. CSV-Ausgabe, CSV-Export und Formatwahl werden entfernt; bestehende CSV-Ergebnisse werden nicht automatisch migriert. |
 | IDEE-S-00008 | Teilweise angenommen; Messwerte offen; A-S-00034 | Messung auf Tabellenkopie mit Dateigroesse, Erzeugung, Vollscan, kalten/warmen selektiven Abfragen, p95 und Spitzen-RAM. Kein CSV-Produktvergleich; quantitative Grenzen erst nach Messung festlegen. |
 | IDEE-S-00009 | CORE-Konsumentensicht angenommen; Umsetzung separat | Lookup ist ein aerodynamisches Segel-Lookup, keine allgemeine Windfelddatei. Der Konsumentenpfad transformiert relativen Wind einschliesslich Bootsbewegung; der Core wertet Lookup-Daten derzeit noch nicht als Windphysik aus. Keine Spiegelung/Begrenzung negativer Windneigungen und keine behauptete Grosssegel-/Fock-Wechselwirkung. Keine Core-Aenderung beauftragt. |
+
+## Erweiterung: negative lokale Windneigung (14.11.2026)
+
+Status: **am 14.11.2026 finalisiert und zur Umsetzung freigegeben.** Die
+angenommenen Punkte sind den Anforderungen A-S-00039 bis A-S-00042
+zugeordnet. Die Core-Bestaetigung der vier Vertragsdetails ist in Abschnitt
+12.4 der [Spezifikation](../Spezifikation_Lookup_Generator.md#12-vorzeichenbehaftete-lokale-windneigung)
+dokumentiert. Umsetzungsstand und Abnahmen stehen im
+[Plan](../../Umsetzungsplaene/Entwurf_Lookup_Generator.md#10-vorzeichenbehaftete-lokale-windneigung).
+
+| Kennung | Status | Nutzerentscheidung und verbleibende Klaerung |
+|---|---|---|
+| IDEE-S-00010 | Angenommen; A-S-00039 | -90 bis +90 Grad direkt mit vorzeichenbehaftetem 3D-Wind berechnen; beide Pole exakt und azimutinvariant. H1-Grenzen einschliesslich beidseitiger Crossflow-Ueberblendung sind dokumentiert; keine Lastspiegelung. |
+| IDEE-S-00011 | Angenommen; A-S-00040/A-S-00041 | Auftraege auf die 19-Werte-Achse umstellen, alte Lookup-Formatversionen nicht unterstuetzen, neue Lookups mit Version 3 ausgeben; Ausgabeachse, Ressourcenlimit und Fehlersperre nachweisen. Die fuenf produktiven Auftraege im separaten Modelle-Repository sind umgestellt und ihre Lookups atomar durch gepruefte Version-3-Ausgaben ersetzt. |
+| IDEE-S-00012 | Angenommen; A-S-00041 | Core bestaetigt Referenzpunkt Segelhals mit Translation/Rotation, lineare log(Re)-Interpolation ohne Extrapolation, vollstaendige Halsmomententransformation und Lookup-Formatversion 3 ohne Legacy-Leser. |
+| IDEE-S-00013 | Angenommen; A-S-00042 | Numerik, Parquet-Integration, Bestandsregression und Core-Vertragstests sind verpflichtend; physikalische Validierung ist nicht verlangt und darf die Nutzbarkeit nicht einschraenken. |
+
+## Erweiterung: vorbereitetes Segelmodell fuer lokale Windfelder (15.11.2026)
+
+Status: **am 15.11.2026 auf Nutzerauftrag finalisiert; Umsetzung nicht
+beauftragt.** Die Anforderungen stehen in
+[Abschnitt 13](../Spezifikation_Lookup_Generator.md#13-vorbereitetes-segelmodell-fuer-lokale-windfelder),
+ihre Umsetzungsschritte im
+[Plan](../../Umsetzungsplaene/Entwurf_Lookup_Generator.md#11-vorbereitetes-segelmodell-fuer-lokale-windfelder).
+Die alten Kennungen bleiben als Herkunft erhalten. Das festgelegte
+Verfahren und seine Abnahme sind noch nicht implementiert oder nachgewiesen.
+
+| Kennung | Status und Anforderungen | Entscheidung und verbleibende Nachweise |
+|---|---|---|
+| IDEE-S-00014 | Angenommen; A-S-00043/A-S-00048/A-S-00049/A-S-00052 | H1-Kopplung und Geometrie-/Windabhaengigkeit in 13.8 festgelegt; Loesbarkeit, H1-Paritaet und Konvergenz noch nachzuweisen. |
+| IDEE-S-00015 | Angenommen; A-S-00044 bis A-S-00046/A-S-00055 | Gesamte Konturhoehe, gleich hohe Streifen, eindeutige Viertelsehne und interne Unterteilung festgelegt; Integration und ungueltige Schnitte noch zu pruefen. |
+| IDEE-S-00016 | Angenommen; A-S-00047 | Lineare Hoeheninterpolation mit konstanter Fortsetzung festgelegt; Anwendung an allen internen Punkten und Rasterabnahme noch zu pruefen. |
+| IDEE-S-00017 | Angenommen; A-S-00049 bis A-S-00051/A-S-00070 | 0--50 m/s, analytisches Niedrig-Re-Modell und lokale Nullgeschwindigkeit festgelegt; Grenzuebergaenge und geforderter Bereich noch nachzuweisen. |
+| IDEE-S-00018 | Angenommen; A-S-00054 bis A-S-00058/A-S-00066 bis A-S-00069/A-S-00072 | JSON/Parquet-Schema, Integritaet, Schutz und spaetere Abloesung festgelegt; alte externe Dateien bleiben unberuehrt. Roundtrip, Determinismus und Publikation noch zu pruefen. |
+| IDEE-S-00019 | Angenommen; A-S-00052/A-S-00053/A-S-00059/A-S-00060 | Typisierter Laufzeitvertrag, unveraenderliches Modell und Fehlerkategorien festgelegt; konkrete Exporte mit CPPI-IDs sind vor ihrer Implementierung zu definieren und zu testen. Eine Core-Freigabe konkreter Signaturen liegt nicht vor. |
+| IDEE-S-00020 | Angenommen; A-S-00061/A-S-00062/A-S-00064 | Vergleichsnorm, Bezug, additive Toleranz und Referenz festgelegt; H1-Referenzkonvergenz und Einhaltung von 0,1 %/5 % noch nachzuweisen. |
+| IDEE-S-00021 | Angenommen; A-S-00063 bis A-S-00065/A-S-00069/A-S-00070 | Testsegel, Winkel, Null-/Gradientfaelle und Messungen festgelegt; numerische Abnahme und Leistungsmessung fehlen, fehlende physikalische Validierung ist separat sichtbar. |

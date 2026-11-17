@@ -1,4 +1,4 @@
-# Technische Modellfestlegung H1 (05.11.2026)
+# Technische Modellfestlegung H1 (Stand 14.11.2026)
 
 **Ingenieurmodell, nicht physikalisch validiert.** Die Umsetzung ist durch
 den Nutzer beauftragt. Die folgenden Schliessungsparameter sind explizite,
@@ -78,11 +78,14 @@ Gradient ueber Hoehe. Hochwinkeldruck und tangentiale Reibung verwenden den
 vollen 3D-Vektor, auch bei exakt vertikalem Wind; gebundene Zirkulation
 verwendet die explizite Crossflow-Annahme oben, Kutta-Joukowski den
 vollen Vektor. Es wird nicht einfach der gesamte horizontale Lastvektor
-mit cos(beta) skaliert. Anliegender Anteil wird
-zwischen 60 und 80 Grad Elevation stetig ausgeblendet: die Traglinie
-verliert bei spannweitiger Anstroemung ihre Gueltigkeit. Der Pol nutzt
-exakt (0,0,-1), unabhaengig vom Azimut. Vertikale Lasten werden nicht
-pauschal auf null gesetzt. Negative Elevationen werden abgelehnt.
+mit cos(beta) skaliert. Anliegender Anteil wird zwischen `abs(beta)=60` und `abs(beta)=80` Grad
+stetig ausgeblendet: die Traglinie verliert bei spannweitiger Anstroemung
+ihre Gueltigkeit. Das ist eine explizite Modellannahme fuer beide Vorzeichen,
+keine Symmetrieannahme fuer die Lasten. Der Pol nutzt exakt
+`(0,0,-1)` bei `beta=+90` und `(0,0,+1)` bei `beta=-90`, jeweils
+unabhaengig vom Azimut. Vertikale Lasten werden nicht pauschal auf null
+gesetzt. Der Solver berechnet den signed 3D-Vektor direkt; negative
+Elevationen werden weder gespiegelt noch begrenzt.
 
 Lastmodell: anliegende Kraft an Viertelsehne **plus unabhaengigem
 Fourier-Profilmoment**; abgeloester Impulsdruck an vier Sehnen-Mittelpunkten
@@ -103,16 +106,18 @@ Gueltig nur inkompressibel, festes duennes Tuch, quasistationaer,
 Camber |m|<=0.2, 0.05<=p<=0.95, |Twist|<=45 Grad.
 
 Unit-Tests pruefen analytische Duennprofilgrenzfaelle, Reibungsformeln,
-Geometrie, Momentenidentitaet, 3D-Symmetrien und stetige Uebergaenge.
+Geometrie, Momentenidentitaet, beide signed Elevationspole, beidseitige
+Ueberblendungen sowie endliche 3D-Lasten.
 Auftragspruefungen pruefen Fourier-/Provider-, Hoehenraster- und
 Winkelinterpolationskonvergenz **getrennt**. Das geforderte Neigungs-
-Grundraster 0, 10, ..., 90 Grad bleibt unveraendert. Zusaetzliche
-Ausgabestuetzstellen liegen gezielt dichter im nichtlinearen Bereich:
-52.5 bis 57.5, 62.5 bis 67.5, 72.5 bis 77.5 sowie 82.5 bis 87.5 Grad
-in 2.5-Grad-Schritten und 88.75 Grad. Die Ausgabe-Neigungsachse enthaelt
-damit 23 Werte statt der zehn Basiswerte; die 360er Azimutachse bleibt
+Grundraster -90, -80, ..., 0, ..., +80, +90 Grad wird direkt berechnet.
+Zusaetzliche Ausgabestuetzstellen liegen gezielt dichter im nichtlinearen
+Bereich, symmetrisch verteilt bei den negierten bisherigen positiven
+Verfeinerungsstellen einschliesslich +/-88.75 Grad. Die Ausgabe-
+Neigungsachse enthaelt 45 Werte; diese Stuetzstellenanordnung behauptet
+keine Symmetrie der Kraefte oder Momente. Die 360er Azimutachse bleibt
 unveraendert. Periodische tensorprodukt-kubische Hermite-Interpolation wird
-an Winkel- und Zellenzwischenpunkten direkt gegen den Rechenkern geprueft.
+an Winkel- und Zellenzwischenpunkten beidseitig gegen den Rechenkern geprueft.
 Das Raster wird nur erweitert, nicht die Modellphysik oder die
 Abnahmetoleranzen angepasst. Toleranzueberschreitungen sperren die
 Veroeffentlichung, sie werden nicht kaschiert.

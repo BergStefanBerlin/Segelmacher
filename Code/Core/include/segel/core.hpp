@@ -13,7 +13,7 @@ public:
     Context& operator=(const Context&) = delete;
     std::string geometry() const; // CPPI-0004
     std::string solve(double alpha_deg, double beta_deg, double re_ref,
-                      int factor, bool loads = true, int lifting_modes = 48) const; // CPPI-0005
+                      int factor, bool loads = true, int lifting_modes = 48) const; // CPPI-0005; signed beta [-90,90]
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
