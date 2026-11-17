@@ -360,6 +360,16 @@ struct RigidTransform {
     V vector(V v) const {return {dot(rotation[0],v),dot(rotation[1],v),dot(rotation[2],v)};}
     V point(V v) const {return vector(v)+translation;}
 };
+void validate_transform(const RigidTransform& transform) {
+    const auto& rotation=transform.rotation;
+    for(int i=0;i<3;++i)for(int k=0;k<3;++k)
+        require(std::isfinite(dot(rotation[i],rotation[k]))&&
+                std::abs(dot(rotation[i],rotation[k])-(i==k?1:0))<1e-10,
+                "Rotation nicht orthonormal");
+    require(dot(cross(rotation[0],rotation[1]),rotation[2])>1-1e-10,
+            "Rotation ist Spiegelung");
+    for(double x:transform.translation)require(std::isfinite(x),"Translation nicht endlich");
+}
 struct Surface {
     std::string id;
     std::shared_ptr<const G> intrinsic;
@@ -587,7 +597,8 @@ double attached_local(const Params& p,double angle,double re) {
 }
 J solve_strips(const Params& p,const J& model,const J& input,double rho,double nu,
                const std::vector<std::vector<double>>& matrix,const LiftingFactor& factor,int modes,
-               bool include_contributions=false,J* lifting_diagnostics=nullptr) {
+               bool include_contributions=false,J* lifting_diagnostics=nullptr,
+               const RigidTransform* sdp_transform=nullptr) {
     require(std::isfinite(rho)&&rho>0&&std::isfinite(nu)&&nu>0,"Ungueltige Luftdichte oder Viskositaet");
     const double height=number(model,"hoehe_m"),base=number(model,"z_min_m");
     require(height>0,"Ungueltige Modellhoehe");
@@ -684,6 +695,7 @@ J solve_strips(const Params& p,const J& model,const J& input,double rho,double n
             {"backward_error",lifting_solved?J(residual_denominator==0?0:residual_inf/residual_denominator):J(nullptr)}};
     std::vector<V> forces(strips.size()),moments(strips.size());
     J contributions=J::array();
+    double sdp_q=0,sdp_b=0,sdp_x=0,sdp_z=0;
     const auto& surface=model.at("flaechenpunkte");
     size_t surface_index=0;
     for(const auto& q:model.at("quadratur")) {
@@ -718,6 +730,18 @@ J solve_strips(const Params& p,const J& model,const J& input,double rho,double n
         auto add=[&](V f,V position,V intrinsic) {
             V moment=cross(position-query,f)+intrinsic;
             forces[id]=forces[id]+f;moments[id]=moments[id]+moment;
+            if(sdp_transform) {
+                const V transformed_force=sdp_transform->vector(f);
+                const V transformed_position=sdp_transform->point(position);
+                const double fy=transformed_force[1];
+                sdp_q+=fy;
+                sdp_b+=std::abs(fy);
+                sdp_x+=transformed_position[0]*fy;
+                sdp_z+=transformed_position[2]*fy;
+                require(std::isfinite(sdp_q)&&std::isfinite(sdp_b)&&
+                        std::isfinite(sdp_x)&&std::isfinite(sdp_z),
+                        "SDP-Summen nicht endlich darstellbar");
+            }
             if(include_contributions)
                 contributions.push_back({{"streifen_id",id},{"kraft_N",f},
                     {"ansatz_m",position},{"eigenmoment_Nm",intrinsic}});
@@ -753,6 +777,8 @@ J solve_strips(const Params& p,const J& model,const J& input,double rho,double n
         result.push_back({{"streifen_id",id},{"kraft_N",forces[id]},{"moment_Nm",moments[id]}});
     }
     if(include_contributions)return {{"streifen",result},{"beitraege",contributions}};
+    if(sdp_transform)return {{"streifen",result},{"sdp",{
+        {"Q_N",sdp_q},{"B_N",sdp_b},{"X_Nm",sdp_x},{"Z_Nm",sdp_z}}}};
     return result;
 }
 J representation(V f,V m,double cref) {
@@ -818,6 +844,15 @@ std::string PreparedModel::solve_modes(std::string_view winds,double rho,double 
 std::string PreparedModel::solve_with_contributions(std::string_view winds,double rho,double nu) const {
     const auto& coupling=*impl_->couplings.at(48);
     return solve_strips(impl_->params,impl_->model,parse(winds),rho,nu,coupling.matrix,coupling.factor,48,true).dump();
+}
+std::string PreparedModel::solve_with_sdp(std::string_view winds,double rho,double nu,
+                                         const std::array<std::array<double,3>,3>& rotation,
+                                         const std::array<double,3>& translation) const {
+    RigidTransform placement{rotation,translation};
+    validate_transform(placement);
+    const auto& coupling=*impl_->couplings.at(48);
+    return solve_strips(impl_->params,impl_->model,parse(winds),rho,nu,
+                        coupling.matrix,coupling.factor,48,false,nullptr,&placement).dump();
 }
 J PreparedModel::solve_with_lifting_diagnostics(std::string_view winds,double rho,double nu,int modes) const {
     auto system=impl_->couplings.find(modes);
@@ -1029,11 +1064,8 @@ std::string resultant(std::string_view input) {
 }
 std::string transform(std::string_view input) {
     J j=parse(input);auto r=j.at("rotation").get<std::array<V,3>>();V t=j.at("translation").get<V>();
-    for(int i=0;i<3;++i)for(int k=0;k<3;++k)
-        require(std::isfinite(dot(r[i],r[k]))&&std::abs(dot(r[i],r[k])-(i==k?1:0))<1e-10,"Rotation nicht orthonormal");
-    require(dot(cross(r[0],r[1]),r[2])>1-1e-10,"Rotation ist Spiegelung");
-    for(double x:t)require(std::isfinite(x),"Translation nicht endlich");
     RigidTransform placement{r,t};
+    validate_transform(placement);
     J loads=j.at("loads");
     for(auto& l:loads) {
         l["f"]=placement.vector(l.at("f").get<V>());l["m"]=placement.vector(l.at("m").get<V>());

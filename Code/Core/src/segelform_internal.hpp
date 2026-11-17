@@ -1,5 +1,6 @@
 #pragma once
 #include <nlohmann/json.hpp>
+#include <array>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -15,6 +16,9 @@ public:
     std::string solve(std::string_view winds, double rho, double nu) const;
     std::string solve_modes(std::string_view winds, double rho, double nu, int modes) const;
     std::string solve_with_contributions(std::string_view winds, double rho, double nu) const;
+    std::string solve_with_sdp(std::string_view winds, double rho, double nu,
+                              const std::array<std::array<double,3>,3>& rotation,
+                              const std::array<double,3>& translation) const;
     nlohmann::json solve_with_lifting_diagnostics(std::string_view winds, double rho, double nu,
                                                  int modes = 48) const;
 private:

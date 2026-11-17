@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <cstring>
 #include <fstream>
@@ -113,6 +114,106 @@ void check_model_roundtrip(const std::filesystem::path& path,const cli::J& rows,
         }
     }
 }
+void run_model_sdp_contract() {
+    using cli::J;
+    namespace fs=std::filesystem;
+    const fs::path source=TEST_SOURCE_ROOT;
+    const auto token=std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto work=fs::temp_directory_path()/("segelmodell_sdp_contract_"+token);
+    if(!fs::create_directory(work))throw std::runtime_error("SDP-Testordner konnte nicht angelegt werden");
+    const auto reference=source/"Code"/"tests"/"daten"/"main_20261105_195154_358.json";
+    const auto conventions=source/"Dokumentationen"/"aerodynamik_konventionen.json";
+    const auto order=source/"Code"/"ressourcen"/"examples"/"Auftragsdatei.json";
+    J job=cli::read(order);
+    J input={{"geometrie",cli::read(reference)},{"numerik",job["numerik"]},
+             {"parameter",job["berechnung"]["parameter"]}};
+    J model=J::parse(segel::detail::prepare_model_data(input.dump()));
+    const auto stage=work/"Segelmodell.arbeiten.sdp_test";
+    if(!fs::create_directory(stage))throw std::runtime_error("SDP-Testmodellordner konnte nicht angelegt werden");
+    const auto metadata=cli::write_model_tables(stage,model);
+    J provenance={
+        {"gueltigkeit",{{"geschwindigkeit_m_s",{0,50}},{"dichte_kg_m3",{1.0,1.4}},
+                         {"viskositaet_m2_s",{1.4e-5,1.6e-5}}}},
+        {"eingaben",{{"auftrag",{{"pfad","Auftragsdatei.json"},{"sha256",cli::hash(order)},{"schema_version","0.1"}}},
+                     {"geometrie",{{"pfad","main.json"},{"sha256",cli::hash(reference)},{"schema_version","0.1"}}},
+                     {"konventionen",{{"pfad","konventionen.json"},{"sha256",cli::hash(conventions)},{"schema_version","0.1"}}}}},
+        {"erzeuger",{{"werkzeug","test"},{"arrow","test"},{"parquet","test"},{"zstd","test"}}},
+        {"numerik",job["numerik"]},
+        {"nachweise",{{"ausgefuehrt",J::array()},{"bestanden",J::array()},{"fehlgeschlagen",J::array()},
+                       {"nicht_ausgefuehrt",J::array({"numerikabnahme"})},{"physikalisch_validiert",false}}}
+    };
+    cli::write_model_manifest(stage,model,metadata,provenance);
+    auto runtime=segel::modell::laden(stage);
+    const auto points=runtime->punkte();
+    std::vector<segel::modell::Wind> winds;
+    J raw_winds=J::array();
+    for(const auto& point:points) {
+        const auto wind=point.id%2==0?segel::modell::Vektor{-10,4,0.3}:
+                                      segel::modell::Vektor{-10,-4,0.3};
+        winds.push_back({point.id,wind});
+        raw_winds.push_back({{"streifen_id",point.id},{"wind_m_s",wind}});
+    }
+    const auto baseline=runtime->berechnen(winds,1.225,1.5e-5);
+    segel::detail::PreparedModel prepared(model.dump());
+    const auto contributions=J::parse(prepared.solve_with_contributions(raw_winds.dump(),1.225,1.5e-5))
+                                 .at("beitraege");
+    auto expected_sdp=[&](const segel::modell::Transformation& transform) {
+        segel::modell::SdpSummen expected{model.at("segel_id").get<std::string>(),0,0,0,0};
+        auto apply_vector=[&](const segel::modell::Vektor& vector) {
+            segel::modell::Vektor result{};
+            for(size_t row=0;row<3;++row)for(size_t column=0;column<3;++column)
+                result[row]+=transform.rotation[row][column]*vector[column];
+            return result;
+        };
+        for(const auto& contribution:contributions) {
+            const auto force=apply_vector(contribution.at("kraft_N").get<segel::modell::Vektor>());
+            auto position=apply_vector(contribution.at("ansatz_m").get<segel::modell::Vektor>());
+            for(size_t axis=0;axis<3;++axis)position[axis]+=transform.translation_m[axis];
+            expected.Q_N+=force[1];
+            expected.B_N+=std::abs(force[1]);
+            expected.X_Nm+=position[0]*force[1];
+            expected.Z_Nm+=position[2]*force[1];
+        }
+        return expected;
+    };
+    auto check_result=[&](const segel::modell::Transformation& transform) {
+        const auto result=runtime->berechnen_mit_sdp(winds,1.225,1.5e-5,transform);
+        if(result.sdp.segel_id!=model.at("segel_id").get<std::string>()||
+           result.streifenlasten.size()!=baseline.size())
+            throw std::runtime_error("SDP-Ergebnisidentitaet oder Streifenanzahl weicht ab");
+        for(size_t i=0;i<baseline.size();++i)
+            if(result.streifenlasten[i].id!=baseline[i].id||
+               result.streifenlasten[i].kraft_N!=baseline[i].kraft_N||
+               result.streifenlasten[i].moment_Nm!=baseline[i].moment_Nm)
+                throw std::runtime_error("SDP-Berechnung hat bestehende Streifenlasten veraendert");
+        const auto expected=expected_sdp(transform);
+        auto close=[](double actual,double reference_value) {
+            return std::isfinite(actual)&&
+                   std::abs(actual-reference_value)<=1e-10*std::max(1.0,std::abs(reference_value));
+        };
+        if(!close(result.sdp.Q_N,expected.Q_N)||!close(result.sdp.B_N,expected.B_N)||
+           !close(result.sdp.X_Nm,expected.X_Nm)||!close(result.sdp.Z_Nm,expected.Z_Nm))
+            throw std::runtime_error("SDP-Summen stimmen nicht mit den transformierten Einzelbeitraegen ueberein");
+    };
+    const segel::modell::Transformation identity{
+        {{{1,0,0},{0,1,0},{0,0,1}}},{0,0,0}};
+    check_result(identity);
+    const segel::modell::Transformation rotated{
+        {{{0,-1,0},{1,0,0},{0,0,1}}},{0.7,-0.2,0.5}};
+    check_result(rotated);
+    const auto expected=expected_sdp(identity);
+    if(!(expected.B_N>std::abs(expected.Q_N)))
+        throw std::runtime_error("SDP-Gegenkraftprobe enthaelt keine gegenlaeufigen Einzelkraefte");
+    auto reflection=identity;
+    reflection.rotation[0][0]=-1;
+    bool rejected=false;
+    try { runtime->berechnen_mit_sdp(winds,1.225,1.5e-5,reflection); }
+    catch(const segel::modell::Fehler& e) { rejected=e.art()==segel::modell::Fehlerart::eingabe; }
+    if(!rejected)throw std::runtime_error("Spiegelnde SDP-Transformation wurde nicht abgelehnt");
+    std::error_code ec;
+    fs::remove_all(work,ec);
+    if(ec)throw std::runtime_error("SDP-Testordner konnte nicht entfernt werden: "+ec.message());
+}
 }
 int main(int argc,char** argv) {
     using cli::J;
@@ -127,6 +228,10 @@ int main(int argc,char** argv) {
                 if(e.art()==segel::modell::Fehlerart::integritaet)return 3;
                 return 1;
             }
+        }
+        if(argc==2&&std::string(argv[1])=="--test-model-sdp") {
+            run_model_sdp_contract();
+            return 0;
         }
         if(argc==5&&std::string(argv[1])=="--test-publish-fingerprint") {
             const auto stage=std::filesystem::u8path(argv[2]);
